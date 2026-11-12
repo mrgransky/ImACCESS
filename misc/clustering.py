@@ -2595,7 +2595,7 @@ def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
 _AUG_TRAILING_PUNCT = re.compile(r'[^\w]+$')
 _AUG_DOTTED_ACRONYM = re.compile(r'^(?:[a-z]\.)+[a-z]?$')
 _AUG_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|\d+[a-z]{0,2}|[a-z])$')
-_AUG_VERSION_MARKERS = frozenset({'mark', 'type', 'typ', 'model', 'no', 'ausf', 'series'})
+_AUG_VERSION_MARKERS = frozenset({'mk', 'mark', 'mod', 'type', 'typ', 'model', 'no', 'ausf', 'series'})
 
 _AUG_APPOSITIVE_TITLES = frozenset({
 	'ambassador', 'ambassadors', 'consul', 'diplomat', 'president', 'general',
@@ -2630,12 +2630,21 @@ def _aug_norm_token(tok: str) -> str:
 
 def _aug_strip_version_tail(toks: List[str]) -> List[str]:
 	toks = list(toks)
-	while len(toks) > 1 and bool(_AUG_VERSION_RE.match(toks[-1])):
-		if toks[-1][0].isdigit() and re.fullmatch(r'[a-z]{1,3}', toks[-2]) and toks[-2] not in _AUG_VERSION_MARKERS:
-			break
-		toks.pop()
-		while len(toks) > 1 and toks[-1] in _AUG_VERSION_MARKERS:
+	while len(toks) > 1:
+		if bool(_AUG_VERSION_RE.match(toks[-1])):
+			if toks[-1][0].isdigit() and re.fullmatch(r'[a-z]{1,3}', toks[-2]) and toks[-2] not in _AUG_VERSION_MARKERS:
+				break
 			toks.pop()
+			while len(toks) > 1 and toks[-1] in _AUG_VERSION_MARKERS:
+				toks.pop()
+		elif len(toks) > 2 and toks[-2] in _AUG_VERSION_MARKERS and any(ch.isdigit() for ch in toks[-1]):
+			toks.pop()
+			while len(toks) > 1 and toks[-1] in _AUG_VERSION_MARKERS:
+				toks.pop()
+		elif toks[-1] in {'mk', 'ausf'}:
+			toks.pop()
+		else:
+			break
 	return toks
 
 def _extract_syntactic_head_tokens(
@@ -2692,6 +2701,14 @@ def _extract_syntactic_head_tokens(
 
 	raw_head_counts = Counter(raw_heads)
 	known_vocab = set(raw_head_counts.keys()) | single_word_vocab
+	untitled_head_counts: Counter = Counter()
+	for hp_pairs, h_raw in zip(parsed_phrases, raw_heads):
+		has_title = any(
+			nt in _AUG_APPOSITIVE_TITLES or _stem_token(nt) in _AUG_APPOSITIVE_TITLES
+			for _, nt in hp_pairs[:-1]
+		)
+		if not has_title:
+			untitled_head_counts[h_raw] += 1
 
 	final_heads: List[str] = []
 	n_appositive_normalized = 0
@@ -2704,9 +2721,11 @@ def _extract_syntactic_head_tokens(
 
 		# 4. Corpus-aware appositive title fallback:
 		# If the phrase contains an explicit title/role noun followed by capitalized personal name tokens
-		# whose trailing surname is a singleton head in the corpus (raw_head_counts[h] == 1),
-		# fall back to the title noun (e.g. 'Cuban Ambassador Guillermo Belt' -> 'ambassador').
-		if len(hp_pairs) >= 2 and raw_head_counts[h] == 1:
+		# whose trailing surname is a singleton head in the corpus (raw_head_counts[h] == 1), OR appears
+		# at most twice and exclusively with a title (untitled_head_counts[h] == 0, e.g. 'Ambassador Wallace'
+		# + 'Ambassador Hugh C. Wallace'), fall back to the title noun ('ambassador'), while preserving
+		# recurring historical figures that also appear untitled ('President Roosevelt' + 'Franklin D. Roosevelt').
+		if len(hp_pairs) >= 2 and (raw_head_counts[h] == 1 or (raw_head_counts[h] <= 2 and untitled_head_counts[h] == 0)):
 			for i, (rt, nt) in enumerate(hp_pairs[:-1]):
 				stem_nt = _stem_token(nt)
 				if nt in _AUG_APPOSITIVE_TITLES or stem_nt in _AUG_APPOSITIVE_TITLES:
@@ -2763,14 +2782,21 @@ def _extract_syntactic_head_tokens(
 def _print_augmentation_diagnostics(aug_info: Dict[str, Any], cached: bool = False) -> None:
 	if not aug_info or not aug_info.get("enabled", False):
 		return
-	tag = " [CACHED]" if cached else ""
+	tag = " --(CACHED)--" if cached else ""
 	print("\n" + "=" * 110)
-	print(f"[HYBRID FEATURE SPACE AUGMENTATION (Option B)]{tag}")
+	print(f"[HYBRID FEATURE SPACE AUGMENTATION{tag}]")
 	print(f"  ├─ Mathematical Model       X_tilde = [ sqrt(1 - β²) · X_full  ||  β · H_head_proj ]  (Direct-Sum Hilbert Space)")
 	print(f"  ├─ Subspace Dimensions      Full: {aug_info['base_dim']}D  ⊕  Head: {aug_info['head_subspace_dim']}D  =>  Augmented: {aug_info['augmented_dim']}D")
 	print(f"  ├─ Weighting Parameters     β (head_weight) = {aug_info['head_weight']:.4f}  |  α = sqrt(1 - β²) = {aug_info['full_weight']:.4f}")
 	print(f"  ├─ Variance Allocation      Full-Phrase Semantics: {aug_info['full_variance_pct']:.1f}%  |  Syntactic-Head Semantics: {aug_info['head_variance_pct']:.1f}%")
-	print(f"  ├─ SVD Head Subspace        Retained {aug_info['svd_explained_energy_pct']:.2f}% Gram energy in {aug_info['head_subspace_dim']}D (elapsed: {aug_info.get('elapsed_sec', 0.0):.2f}s)")
+	if "head_anisotropy_before" in aug_info:
+		print(
+			f"  ├─ Head Space Centering     Anisotropy (mean off-diag head cos): "
+			f"{aug_info['head_anisotropy_before']:.4f} -> {aug_info['head_anisotropy_after']:.4f} "
+			f"(mean norm={aug_info.get('head_mean_vec_norm', 0.0):.4f})"
+		)
+	print(f"  ├─ SVD Head Subspace        Retained {aug_info['svd_explained_energy_pct']:.2f}% centered Gram energy in {aug_info['head_subspace_dim']}D (elapsed: {aug_info.get('elapsed_sec', 0.0):.2f}s)")
+
 	h_stats = aug_info.get("head_extraction", {})
 	if h_stats:
 		print(f"  ├─ Syntactic Head Vocab     {h_stats['n_unique_normalized_heads']:,} unique heads from {h_stats['n_labels']:,} labels ({h_stats['consolidation_factor']}x label-to-head ratio)")
@@ -2780,23 +2806,25 @@ def _print_augmentation_diagnostics(aug_info: Dict[str, Any], cached: bool = Fal
 		if top_heads:
 			top_str = ", ".join(f"{h['head_token']!r}:{h['count']}" for h in top_heads)
 			print(f"  ├─ Top Syntactic Heads      {top_str}")
+
 	bench = aug_info.get("disentanglement_benchmark", {})
 	if bench and bench.get("n_same_head_pairs", 0) > 0:
 		print(f"  └─ Semantic Disentanglement Verification (Same-Head/Diff-Modifier vs. Same-Modifier/Diff-Head):")
 		print(f"     ├─ Same-Head / Diff-Modifier ({bench['n_same_head_pairs']:,} pairs)     : Pre-Aug Cosine = {bench['same_head_cos_before']:.4f}  ->  Post-Aug Cosine = {bench['same_head_cos_after']:.4f} ({bench['same_head_delta']:+.4f})")
 		print(f"     ├─ Same-Modifier / Diff-Head ({bench['n_same_modifier_pairs']:,} pairs) : Pre-Aug Cosine = {bench['same_modifier_cos_before']:.4f}  ->  Post-Aug Cosine = {bench['same_modifier_cos_after']:.4f} ({bench['same_modifier_delta']:+.4f})")
 		print(f"     └─ Entity Separation Margin (SameHead - SameMod) : Pre-Aug = {bench['margin_before']:+.4f}  ->  Post-Aug = {bench['margin_after']:+.4f} (Gain = {bench['margin_gain']:+.4f})")
+
 		examples = bench.get("example_pairs", [])
 		if examples:
-			print("-" * 110)
-			print(f"     {'Pair Type':<26} {'Label A':<30} {'Label B':<30} {'PreCos':<8} {'PostCos':<8} {'ΔCos'}")
-			print("     " + "-" * 105)
+			print("-" * 115)
+			print(f"{'Pairs':<26} {'Label A':<30} {'Label B':<30} {'PreCos':<8} {'PostCos':<8} {'ΔCos'}")
+			print("-" * 115)
 			for ex in examples:
 				print(
-					f"     {ex['pair_type']:<26} {ex['label_a'][:29]:<30} {ex['label_b'][:29]:<30} "
+					f"{ex['pair_type']:<26} {ex['label_a'][:29]:<30} {ex['label_b'][:29]:<30} "
 					f"{ex['cos_before']:<8.4f} {ex['cos_after']:<8.4f} {ex['delta']:+.4f}"
 				)
-	print("=" * 110)
+	print("=" * 115)
 
 def _build_augmented_feature_space(
 	X: np.ndarray,
@@ -2864,7 +2892,30 @@ def _build_augmented_feature_space(
 		m_norms = np.where(m_norms == 0, 1.0, m_norms)
 		U_head[missing_uidx] = (encoded_missing / m_norms).astype(np.float32)
 
-	# 3. Compress head embedding matrix U_head (K, D) -> U_proj (K, d_head) via 2-pass randomized SVD
+	# 3. Mean-center U_head to remove the shared LLM/prompt anisotropy cone before SVD compression.
+	# Without centering, single-word heads encoded with an instruction prompt share a large mean vector
+	# (off-diagonal cosine ~0.85-0.91), preventing distinct heads ('ambassador' vs 'embassy') from separating.
+	rng_aniso = np.random.default_rng(42)
+	sample_k = min(512, n_unique_heads)
+	sample_idx = rng_aniso.choice(n_unique_heads, size=sample_k, replace=False) if n_unique_heads > sample_k else np.arange(n_unique_heads)
+	if sample_k > 1:
+		G_raw = U_head[sample_idx] @ U_head[sample_idx].T
+		head_aniso_before = float((np.sum(G_raw) - sample_k) / (sample_k * (sample_k - 1)))
+	else:
+		head_aniso_before = 0.0
+
+	if n_unique_heads > 1:
+		head_mean_vec = np.mean(U_head, axis=0, keepdims=True)
+		head_mean_norm = float(np.linalg.norm(head_mean_vec))
+		U_head_centered = U_head - head_mean_vec
+		c_norms = np.linalg.norm(U_head_centered, axis=1, keepdims=True)
+		c_norms = np.where(c_norms == 0, 1.0, c_norms)
+		U_head_centered = (U_head_centered / c_norms).astype(np.float32)
+	else:
+		head_mean_norm = 0.0
+		U_head_centered = U_head.copy()
+
+	# Compress centered head embedding matrix U_head_centered (K, D) -> U_proj (K, d_head) via 2-pass randomized SVD
 	d_head = min(int(head_subspace_dim), n_unique_heads, base_dim)
 	if d_head < base_dim:
 		if n_unique_heads > d_head:
@@ -2872,24 +2923,24 @@ def _build_augmented_feature_space(
 			oversample = min(16, max(1, n_unique_heads - d_head))
 			q_dim = d_head + oversample
 			omega = rng.standard_normal((base_dim, q_dim)).astype(np.float32)
-			Y = U_head @ omega
+			Y = U_head_centered @ omega
 			for _ in range(2):
 				Q, _ = np.linalg.qr(Y, mode='reduced')
-				Z_sub = U_head.T @ Q
+				Z_sub = U_head_centered.T @ Q
 				Q_z, _ = np.linalg.qr(Z_sub, mode='reduced')
-				Y = U_head @ Q_z
+				Y = U_head_centered @ Q_z
 			Q, _ = np.linalg.qr(Y, mode='reduced')
-			B = Q.T @ U_head
+			B = Q.T @ U_head_centered
 			_, S_sub, Vt_sub = np.linalg.svd(B, full_matrices=False)
 		else:
 			# Exact thin SVD when K <= d_head: zero information loss in K dimensions
-			_, S_sub, Vt_sub = np.linalg.svd(U_head, full_matrices=False)
-		total_energy = float(np.sum(U_head ** 2))
+			_, S_sub, Vt_sub = np.linalg.svd(U_head_centered, full_matrices=False)
+		total_energy = float(np.sum(U_head_centered ** 2))
 		retained_energy = float(np.sum(S_sub[:d_head] ** 2))
 		explained_energy_pct = round(min(100.0, retained_energy / max(total_energy, 1e-12) * 100.0), 2)
-		U_proj = (U_head @ Vt_sub[:d_head].T).astype(np.float32)
+		U_proj = (U_head_centered @ Vt_sub[:d_head].T).astype(np.float32)
 	else:
-		U_proj = U_head.copy()
+		U_proj = U_head_centered.copy()
 		d_head = U_proj.shape[1]
 		explained_energy_pct = 100.0
 
@@ -2897,6 +2948,12 @@ def _build_augmented_feature_space(
 	p_norms = np.linalg.norm(U_proj, axis=1, keepdims=True)
 	p_norms = np.where(p_norms == 0, 1.0, p_norms)
 	U_proj = (U_proj / p_norms).astype(np.float32)
+
+	if sample_k > 1:
+		G_proj = U_proj[sample_idx] @ U_proj[sample_idx].T
+		head_aniso_after = float((np.sum(G_proj) - sample_k) / (sample_k * (sample_k - 1)))
+	else:
+		head_aniso_after = 0.0
 
 	# 4. Assemble X_aug = [ sqrt(1 - β²) * X_unit  ||  β * H_proj ] in R^{D + d_head}
 	beta = float(head_weight)
@@ -2972,7 +3029,7 @@ def _build_augmented_feature_space(
 		if ia is not None and ib is not None:
 			cb = float(np.dot(X_unit[ia], X_unit[ib]))
 			ca = float(np.dot(X_aug[ia], X_aug[ib]))
-			example_pairs.append({
+			ex_pair = {
 				"pair_type": ptype,
 				"label_a": unique_labels[ia],
 				"label_b": unique_labels[ib],
@@ -2981,14 +3038,15 @@ def _build_augmented_feature_space(
 				"cos_before": round(cb, 4),
 				"cos_after": round(ca, 4),
 				"delta": round(ca - cb, 4),
-			})
+			}
+			example_pairs.append(ex_pair)
 
 	if len(example_pairs) < 4:
 		for ptype, plist in [("Same-Modifier / Diff-Head", same_mod_pairs[:3]), ("Same-Head / Diff-Modifier", same_head_pairs[:3])]:
 			for ia, ib in plist:
 				cb = float(np.dot(X_unit[ia], X_unit[ib]))
 				ca = float(np.dot(X_aug[ia], X_aug[ib]))
-				example_pairs.append({
+				ex_pair = {
 					"pair_type": ptype,
 					"label_a": unique_labels[ia],
 					"label_b": unique_labels[ib],
@@ -2997,7 +3055,8 @@ def _build_augmented_feature_space(
 					"cos_before": round(cb, 4),
 					"cos_after": round(ca, 4),
 					"delta": round(ca - cb, 4),
-				})
+				}
+				example_pairs.append(ex_pair)
 
 	elapsed = round(time.time() - t0, 2)
 	aug_info = {
@@ -3010,6 +3069,10 @@ def _build_augmented_feature_space(
 		"base_dim": int(base_dim),
 		"head_subspace_dim": int(d_head),
 		"augmented_dim": int(base_dim + d_head),
+		"head_mean_centered": True,
+		"head_mean_vec_norm": round(head_mean_norm, 4),
+		"head_anisotropy_before": round(head_aniso_before, 4),
+		"head_anisotropy_after": round(head_aniso_after, 4),
 		"svd_explained_energy_pct": explained_energy_pct,
 		"n_heads_indexed_in_X": int(n_indexed_in_X),
 		"n_heads_encoded_on_fly": int(n_encoded_on_fly),
@@ -3118,7 +3181,7 @@ def _caching(
 	
 	x_path = stem + "_embeddings_X.npy"
 	if head_augmentation_weight and head_augmentation_weight > 0.0:
-		z_path = f"{stem}_headaug_w{head_augmentation_weight:.2f}_d{head_subspace_dim}_linkage_Z.npy"
+		z_path = f"{stem}_headaug_centered_w{head_augmentation_weight:.2f}_d{head_subspace_dim}_linkage_Z.npy"
 	else:
 		z_path = stem + "_linkage_Z.npy"
 	
@@ -5396,7 +5459,7 @@ def _resolve_shared_canonicals(
 	if verbose:
 		print(f"\nRESOLVED SHARED CANONICALS")
 		print(json.dumps(stats, indent=2, ensure_ascii=False))
-		print("-"*130)
+		print("-"*70)
 
 	return cluster_canonicals
 
@@ -5543,8 +5606,8 @@ def _harmonize_final_canonicals(
 		print(f"  ├─ changed group(s)   {stats['groups_changed']}")
 		print(f"  └─ renamed cluster(s) {stats['clusters_renamed']}\n")
 		for variants, winner in examples:
-			print(f"{repr(winner):<20}{variants}")
-		print("-"*120)
+			print(f"{repr(winner):<27}{variants}")
+		print("-"*70)
 
 	return cluster_canonicals
 
@@ -6586,14 +6649,15 @@ def assign_canonical_labels(
 	# (I..XXXIX), so real words made of those letters ('mill', 'civil', 'mix') are never stripped.
 	_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|\d+[a-z]{0,2}|[a-z])$')
 	_VERSION_MARKERS = {
-		# 'mk', 
-		'mark', 
-		'type', 
-		'typ', 
-		'model', 
-		'no', 
-		'ausf', 
-		'series'
+		'mk',
+		'mark',
+		'mod',
+		'type',
+		'typ',
+		'model',
+		'no',
+		'ausf',
+		'series',
 	}
 	_LEGAL_SUFFIXES = {
 		'co', 
@@ -6885,7 +6949,7 @@ def assign_canonical_labels(
 					continue
 
 				token_member_counts[t] += 1
-				if t == hp_tok:
+				if t == hp_tok or t in _AUG_APPOSITIVE_TITLES or _stem_token(t) in _AUG_APPOSITIVE_TITLES:
 					token_head_counts[t] += 1
 
 		best, best_below, blocked = None, None, []
