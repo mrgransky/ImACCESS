@@ -59,7 +59,7 @@ STRINGENTLY exclude keywords containing:
   - family relationship terms
   - military units, echelons, or administrative formations
   - roman numerals, ordinal numbers, quantities, counts, or measurements
-  - infrastructure/facility identifier, serial number, brand, building number, structure designation, or model
+  - infrastructure/facility identifier, designator, serial number, brand, or model
   - dates, times, years, decades, or any temporal references
   - geographical place, country, commune, neighborhood, municipality, island, district, civil parish, borough, or town
   - locations, routes, or directional terms
