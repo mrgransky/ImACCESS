@@ -49,7 +49,8 @@ STRICT PROHIBITION:
   - This includes names painted on hulls or fuselages, signage, labels, plates, banners, watermarks, and captions.
   - Discard any candidate keyword that matches or paraphrases visible lettering before output.
 
-Constraints:
+Constraints (STRICTLY CRITICAL):
+  - Avoid typographical error, misprints, or irregular orthography
   - Exclude geographical place, country, commune, neighborhood, municipality, island, district, borough, or town
   - Exclude locations, routes, or directional terms
   - Exclude human human category nouns and classifications
@@ -59,7 +60,6 @@ Constraints:
   - Refrain from using common environmental details
   - Refrain from using underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words
   - Refrain from using counting expressions
-  - Avoid typographical error, misprints, or irregular orthography
   - Avoid vague and generic descriptor or container nouns which lack detail
   - Avoid purely demographic descriptors without contextual role.
 

@@ -4745,354 +4745,6 @@ def get_clustered_labels(
 
 	return labels
 
-def _mean_pairwise_cosine(X_unit_sub: np.ndarray) -> float:
-	"""Mean off-diagonal cosine similarity of an L2-normalized row subset in O(n*D)."""
-	n = len(X_unit_sub)
-	if n <= 1:
-		return 1.0
-	s = X_unit_sub.sum(axis=0)
-	return float((float(np.dot(s, s)) - n) / (n * (n - 1)))
-
-def _resolve_head_embeddings(
-	heads_needed: List[str],
-	head_surface_map: Dict[str, str],
-	label_texts: List[str],
-	X_unit: np.ndarray,
-	model: Optional[SentenceTransformer],
-	batch_size: int = 128,
-	encode_prompt: Optional[str] = None,
-) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
-	"""
-	Build unit-normalized raw and mean-centered embeddings for the requested syntactic heads.
-	Reuses X_unit when a head's surface form already appears in label_texts, encoding only
-	missing heads, then subtracts the global label mean vector to remove prompt anisotropy.
-	"""
-	if not heads_needed:
-		return {}, {}
-
-	label_lower_to_idx = {lbl.lower(): idx for idx, lbl in enumerate(label_texts)}
-	global_mean = X_unit.mean(axis=0)
-
-	raw_vecs: Dict[str, np.ndarray] = {}
-	missing_heads: List[str] = []
-	missing_surfaces: List[str] = []
-
-	for h in heads_needed:
-		surf = head_surface_map.get(h, h)
-		idx = label_lower_to_idx.get(surf.lower())
-		if idx is None:
-			idx = label_lower_to_idx.get(h)
-		if idx is not None:
-			raw_vecs[h] = X_unit[idx]
-		else:
-			missing_heads.append(h)
-			missing_surfaces.append(surf)
-
-	if missing_surfaces and model is not None:
-		encoded = _encode_(model, missing_surfaces, batch_size, encode_prompt)
-		for h, vec in zip(missing_heads, encoded):
-			v = np.asarray(vec, dtype=np.float32)
-			raw_vecs[h] = v / (np.linalg.norm(v) + 1e-12)
-
-	centered_vecs: Dict[str, np.ndarray] = {}
-	for h, v in raw_vecs.items():
-		vc = v - global_mean
-		centered_vecs[h] = vc / (np.linalg.norm(vc) + 1e-12)
-
-	return raw_vecs, centered_vecs
-
-def _evaluate_cluster_head_split(
-	cid: int,
-	idx: np.ndarray,
-	heads: List[str],
-	head_cnt: Counter,
-	strong_heads: List[str],
-	X_unit: np.ndarray,
-	label_texts: List[str],
-	raw_head_emb: Dict[str, np.ndarray],
-	centered_head_emb: Dict[str, np.ndarray],
-	synonym_tau: float,
-	min_gain: float,
-) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[Dict[str, np.ndarray]]]:
-	"""
-	Evaluate whether a single cluster with >=2 strong syntactic heads should be split.
-	Returns (proposed_record, rejected_record, group_to_indices_map).
-	"""
-	# Pairwise similarities among strong heads + union-find synonym guard
-	parent = {h: h for h in strong_heads}
-
-	def _find(h: str) -> str:
-		while parent[h] != h:
-			parent[h] = parent[parent[h]]
-			h = parent[h]
-		return h
-
-	pair_sims: List[Dict[str, Any]] = []
-	for i_a in range(len(strong_heads)):
-		for i_b in range(i_a + 1, len(strong_heads)):
-			ha, hb = strong_heads[i_a], strong_heads[i_b]
-			if ha not in centered_head_emb or hb not in centered_head_emb:
-				continue
-			c_cos = float(np.dot(centered_head_emb[ha], centered_head_emb[hb]))
-			r_cos = float(np.dot(raw_head_emb[ha], raw_head_emb[hb]))
-			pair_sims.append({
-				"head_a": ha,
-				"head_b": hb,
-				"centered_cos": round(c_cos, 4),
-				"raw_cos": round(r_cos, 4),
-			})
-			if c_cos >= synonym_tau:
-				parent[_find(hb)] = _find(ha)
-
-	groups_map: Dict[str, List[int]] = defaultdict(list)
-	for pos, h in zip(idx, heads):
-		if h in parent:
-			groups_map[_find(h)].append(int(pos))
-
-	if len(groups_map) < 2:
-		rejected = {
-			"cluster_id": int(cid),
-			"reason": "synonym_guard",
-			"size": int(len(idx)),
-			"head_counts": dict(head_cnt.most_common()),
-			"strong_heads": strong_heads,
-			"head_pair_similarities": pair_sims,
-			"members": [label_texts[int(i)] for i in idx],
-		}
-		return None, rejected, None
-
-	# Assign minority-head members to the nearest strong-head group centroid in X_unit
-	group_keys = sorted(groups_map.keys())
-	group_centroids: Dict[str, np.ndarray] = {}
-	for g in group_keys:
-		c = X_unit[groups_map[g]].mean(axis=0)
-		group_centroids[g] = c / (np.linalg.norm(c) + 1e-12)
-
-	for pos, h in zip(idx, heads):
-		if h not in parent:
-			best_g = max(group_keys, key=lambda g: float(np.dot(X_unit[int(pos)], group_centroids[g])))
-			groups_map[best_g].append(int(pos))
-
-	parent_intra = _mean_pairwise_cosine(X_unit[idx])
-	child_intras = {g: _mean_pairwise_cosine(X_unit[groups_map[g]]) for g in group_keys}
-	child_mean_intra = float(np.mean(list(child_intras.values())))
-	gain = child_mean_intra - parent_intra
-
-	subclusters = []
-	for g in group_keys:
-		g_idxs = groups_map[g]
-		g_heads = sorted({h for h in strong_heads if _find(h) == g})
-		subclusters.append({
-			"group_head": g,
-			"heads": g_heads,
-			"size": int(len(g_idxs)),
-			"intra_sim": round(child_intras[g], 4),
-			"members": sorted(label_texts[i] for i in g_idxs),
-		})
-
-	if gain < min_gain:
-		rejected = {
-			"cluster_id": int(cid),
-			"reason": "cohesion_gate",
-			"size": int(len(idx)),
-			"head_counts": dict(head_cnt.most_common()),
-			"strong_heads": strong_heads,
-			"head_pair_similarities": pair_sims,
-			"parent_intra_sim": round(parent_intra, 4),
-			"child_mean_intra_sim": round(child_mean_intra, 4),
-			"intra_sim_gain": round(gain, 4),
-			"subclusters": subclusters,
-		}
-		return None, rejected, None
-
-	proposed = {
-		"cluster_id": int(cid),
-		"size": int(len(idx)),
-		"head_counts": dict(head_cnt.most_common()),
-		"strong_heads": strong_heads,
-		"head_pair_similarities": pair_sims,
-		"parent_intra_sim": round(parent_intra, 4),
-		"child_mean_intra_sim": round(child_mean_intra, 4),
-		"intra_sim_gain": round(gain, 4),
-		"subclusters": subclusters,
-	}
-	group_arrays = {g: np.array(groups_map[g], dtype=np.int64) for g in group_keys}
-	return proposed, None, group_arrays
-
-def split_mixed_head_clusters(
-	X: np.ndarray,
-	labels: np.ndarray,
-	label_texts: List[str],
-	model: Optional[SentenceTransformer] = None,
-	batch_size: int = 128,
-	encode_prompt: Optional[str] = None,
-	min_size: int = 6,
-	min_support: int = 3,
-	min_share: float = 0.30,
-	synonym_tau: float = 0.82,
-	min_gain: float = 0.01,
-	dry_run: bool = True,
-	report_path: Optional[str] = None,
-	verbose: bool = False,
-) -> Tuple[np.ndarray, Dict[str, Any]]:
-	"""
-	Step 4d: Head-purity split pass for mixed-head clusters (e.g. '7 Embassy + 7 Ambassador').
-	Only evaluates clusters of size >= min_size containing >= 2 strong syntactic heads
-	(count >= min_support and share >= min_share). Strong heads whose centered cosine
-	exceeds synonym_tau are merged so true synonyms (e.g. 'aircraft'/'airplane') never split.
-	Splits are further gated by intra-cluster cohesion gain >= min_gain.
-	When dry_run=True, writes the diagnostic report without mutating cluster assignments.
-	"""
-	x_norms = np.linalg.norm(X, axis=1, keepdims=True)
-	x_norms = np.where(x_norms == 0, 1.0, x_norms)
-	X_unit = (X / x_norms).astype(np.float32, copy=False)
-
-	head_tokens, head_surface_map, _ = _extract_syntactic_head_tokens(label_texts)
-
-	unique_cids = np.unique(labels)
-	n_clusters_input = len(unique_cids)
-	n_size_eligible = 0
-	candidates: List[Tuple[int, np.ndarray, List[str], Counter, List[str]]] = []
-	strong_heads_needed: set = set()
-
-	for cid in unique_cids:
-		idx = np.where(labels == cid)[0]
-		if len(idx) < min_size:
-			continue
-		n_size_eligible += 1
-		c_heads = [head_tokens[i] for i in idx]
-		head_cnt = Counter(c_heads)
-		strong = sorted(
-			h for h, cnt in head_cnt.items()
-			if cnt >= min_support and (cnt / len(idx)) >= min_share
-		)
-		if len(strong) >= 2:
-			candidates.append((int(cid), idx, c_heads, head_cnt, strong))
-			strong_heads_needed.update(strong)
-
-	raw_head_emb, centered_head_emb = _resolve_head_embeddings(
-		heads_needed=sorted(strong_heads_needed),
-		head_surface_map=head_surface_map,
-		label_texts=label_texts,
-		X_unit=X_unit,
-		model=model,
-		batch_size=batch_size,
-		encode_prompt=encode_prompt,
-	)
-
-	proposed_splits: List[Dict[str, Any]] = []
-	rejected_candidates: List[Dict[str, Any]] = []
-	new_labels = labels.copy()
-	next_cid = int(labels.max()) + 1 if len(labels) else 0
-
-	for cid, idx, c_heads, head_cnt, strong in candidates:
-		proposed, rejected, group_arrays = _evaluate_cluster_head_split(
-			cid=cid,
-			idx=idx,
-			heads=c_heads,
-			head_cnt=head_cnt,
-			strong_heads=strong,
-			X_unit=X_unit,
-			label_texts=label_texts,
-			raw_head_emb=raw_head_emb,
-			centered_head_emb=centered_head_emb,
-			synonym_tau=synonym_tau,
-			min_gain=min_gain,
-		)
-		if rejected is not None:
-			rejected_candidates.append(rejected)
-			continue
-		if proposed is not None and group_arrays is not None:
-			proposed_splits.append(proposed)
-			if not dry_run:
-				for k, g in enumerate(sorted(group_arrays.keys())):
-					if k == 0:
-						continue
-					new_labels[group_arrays[g]] = next_cid
-					next_cid += 1
-
-	proposed_splits.sort(key=lambda r: (r["intra_sim_gain"], r["size"]), reverse=True)
-	rejected_candidates.sort(key=lambda r: (r["reason"], -r["size"], r["cluster_id"]))
-
-	n_syn_rejected = sum(1 for r in rejected_candidates if r["reason"] == "synonym_guard")
-	n_coh_rejected = sum(1 for r in rejected_candidates if r["reason"] == "cohesion_gate")
-	n_new_clusters = sum(max(0, len(r["subclusters"]) - 1) for r in proposed_splits)
-
-	report = {
-		"meta": {
-			"dry_run": bool(dry_run),
-			"n_clusters_input": int(n_clusters_input),
-			"n_clusters_output": int(len(np.unique(new_labels))),
-			"n_clusters_size_eligible": int(n_size_eligible),
-			"n_clusters_multi_strong_head": int(len(candidates)),
-			"n_proposed_or_applied_splits": int(len(proposed_splits)),
-			"n_new_clusters_created": int(0 if dry_run else n_new_clusters),
-			"n_new_clusters_if_applied": int(n_new_clusters),
-			"n_rejected_synonym_guard": int(n_syn_rejected),
-			"n_rejected_cohesion_gate": int(n_coh_rejected),
-			"parameters": {
-				"min_size": int(min_size),
-				"min_support": int(min_support),
-				"min_share": float(min_share),
-				"synonym_tau": float(synonym_tau),
-				"min_gain": float(min_gain),
-			},
-		},
-		"proposed_splits": proposed_splits,
-		"rejected_candidates": rejected_candidates,
-	}
-
-	if report_path:
-		os.makedirs(os.path.dirname(report_path) or ".", exist_ok=True)
-		tmp_path = report_path + ".tmp"
-		try:
-			with open(tmp_path, "w", encoding="utf-8") as f:
-				json.dump(report, f, indent=2, ensure_ascii=False, default=_json_default)
-			os.replace(tmp_path, report_path)
-		except Exception:
-			if os.path.exists(tmp_path):
-				try:
-					os.remove(tmp_path)
-				except OSError:
-					pass
-			raise
-
-	if verbose:
-		mode = "DRY-RUN" if dry_run else "APPLIED"
-		print("="*120)
-		print(f"\n[HEAD-PURITY SPLIT ({mode})]")
-		print(f"  ├─ Params                   min_size={min_size}, min_support={min_support}, min_share={min_share:.2f}, synonym_tau={synonym_tau:.2f}, min_gain={min_gain:.3f}")
-		print(f"  ├─ Clusters evaluated       {n_size_eligible:,} size-eligible -> {len(candidates):,} with >=2 strong heads")
-		print(f"  ├─ Blocked by guards        synonym_guard={n_syn_rejected:,} | cohesion_gate={n_coh_rejected:,}")
-		print(f"  ├─ Proposed/Applied splits  {len(proposed_splits):,} splits (+{n_new_clusters:,} clusters if applied)")
-
-		for r in proposed_splits[:10]:
-			pairs_str = ", ".join(
-				f"{p['head_a']}<->{p['head_b']}:cen={p['centered_cos']:.3f}/raw={p['raw_cos']:.3f}"
-				for p in r["head_pair_similarities"]
-			)
-			print(
-				f"     ├─ [SPLIT] Cluster {r['cluster_id']:5d} (sz={r['size']:2d}) "
-				f"heads={r['head_counts']} | sim {r['parent_intra_sim']:.4f}->{r['child_mean_intra_sim']:.4f} "
-				f"({r['intra_sim_gain']:+.4f}) | {pairs_str}"
-			)
-		for r in rejected_candidates[:5]:
-			pairs_str = ", ".join(
-				f"{p['head_a']}<->{p['head_b']}:cen={p['centered_cos']:.3f}/raw={p['raw_cos']:.3f}"
-				for p in r["head_pair_similarities"]
-			)
-			print(
-				f"     └─ [SKIP:{r['reason']}] Cluster {r['cluster_id']:5d} (sz={r['size']:2d}) "
-				f"heads={r['head_counts']} | {pairs_str}"
-			)
-		
-		if report_path:
-			print(f"REPORT SAVED: {report_path}")
-
-		print("="*120)
-
-	return new_labels, report
-
 def remove_problematic_clustered_labels(
 	df,
 	embeddings,
@@ -5445,10 +5097,10 @@ def _cap_score(s: str) -> int:
 
 # Non-plural English words ending in -men that should not be mapped to -man
 _NON_PLURAL_MEN = frozenset({
-	"abdomen", "acumen", "albumen", "amen", "bitumen", "cyclamen",
-	"dolmen", "foramen", "hymen", "lumen", "numen", "omen",
-	"ramen", "regimen", "rumen", "semen", "specimen", "stamen",
-	"flamen",
+	"abdomen", "acumen", "albumen", "amen", "bitumen", "bremen", "carmen",
+	"cyclamen", "dolmen", "flamen", "foramen", "hymen", "lumen", "numen",
+	"omen", "ramen", "regimen", "rumen", "semen", "specimen", "stamen",
+	"yemen",
 })
 
 # Known irregular English noun plurals -> singular lemma
@@ -5660,18 +5312,21 @@ _CORE_PREPOSITIONS = frozenset(
 
 def _stem_token(t: str) -> str:
 	"""
-	Crude plural stemmer used only to compare phrases 
-	('tanks' -> 'tank', 'batteries' -> 'battery').
+	Crude plural stemmer used only to compare phrases
+	('tanks' -> 'tank', 'batteries' -> 'battery', 'workmen' -> 'workman').
 	"""
 	if t.endswith("ies") and len(t) > 4:
 		return t[:-3] + "y"
-	
+
 	if t.endswith(("ches", "shes", "xes", "zes", "sses")) and len(t) > 4:
 		return t[:-2]
-	
+
+	if t.endswith("men") and len(t) >= 3 and t not in _NON_PLURAL_MEN:
+		return t[:-2] + "an"
+
 	if t.endswith("s") and not t.endswith("ss") and len(t) > 3:
 		return t[:-1]
-	
+
 	return t
 
 def _stem_seq(label: str) -> List[str]:
@@ -6752,18 +6407,68 @@ def _pick_best_candidate(
 		'freq_guard': freq_guard,
 	}
 
+def _prefer_attested_singular_idx(
+	best_idx: int,
+	candidates: List[str],
+	virtual_flags: List[bool],
+	similarities: np.ndarray,
+	combined_scores: np.ndarray,
+	eligible: np.ndarray,
+	scored: bool,
+	min_sim_ratio: float = 0.85,
+) -> int:
+	"""
+	Prefer an attested eligible singular candidate in the same cluster over a
+	winning plural candidate (e.g. 'workmen' -> 'Workman'), skipping protected
+	plurals, acronyms, -ss words, and low-similarity outliers.
+	"""
+	chosen = candidates[best_idx]
+	low = chosen.lower()
+	if _is_acronym(chosen) or low in _HARMONIZE_PROTECTED_PLURALS or low.endswith("ss"):
+		return best_idx
+
+	chosen_key = _spacing_key(low)
+	chosen_sim = float(similarities[best_idx])
+
+	for sing in _singular_candidates(low):
+		target_key = _spacing_key(sing)
+		if not target_key or target_key == chosen_key:
+			continue
+		matches = [
+			i for i, cand in enumerate(candidates)
+			if i != best_idx
+			and eligible[i]
+			and not _is_acronym(cand)
+			and _spacing_key(cand) == target_key
+			and float(similarities[i]) >= min_sim_ratio * chosen_sim
+		]
+		if matches:
+			return max(
+				matches,
+				key=lambda i: (
+					not virtual_flags[i],
+					float(combined_scores[i]) if scored else 0.0,
+					float(similarities[i]),
+				),
+			)
+
+	return best_idx
+
 def _label_selection_method(
 	composite_idx: Optional[int],
 	is_virtual_pick: bool,
 	freq_guard: str,
 	best_idx: int,
 	pure_sim_idx: int,
+	singular_promoted: bool = False,
 ) -> str:
 	"""Why this label won."""
 	if composite_idx is None:
-		return 'pure_similarity_fallback'
+		return 'singular_preferred' if singular_promoted else 'pure_similarity_fallback'
 	if is_virtual_pick:
 		return 'virtual_hypernym'
+	if singular_promoted:
+		return 'singular_preferred'
 	if freq_guard.startswith('reverted'):
 		return 'freq_guard_revert'
 	if freq_guard.startswith('passed'):
@@ -7645,24 +7350,35 @@ def assign_canonical_labels(
 			sim_gap_guard=VIRTUAL_SIM_GAP_GUARD,
 		)
 
-		best_idx      = pick['best_idx']
+		best_idx_raw  = pick['best_idx']
+		best_idx      = _prefer_attested_singular_idx(
+			best_idx=best_idx_raw,
+			candidates=candidates,
+			virtual_flags=virtual_flags,
+			similarities=similarities,
+			combined_scores=scores['combined_scores'],
+			eligible=scores['eligible'],
+			scored=scored,
+		)
+		singular_promoted = best_idx != best_idx_raw
 		composite_idx = pick['composite_idx']
 		nofreq_idx    = pick['nofreq_idx']
 		freq_guard    = pick['freq_guard']
 		is_virtual_pick = virtual_flags[best_idx]
 
 		method = _label_selection_method(
-			composite_idx, 
-			is_virtual_pick, 
-			freq_guard, 
-			best_idx, 
-			pure_sim_idx
+			composite_idx,
+			is_virtual_pick,
+			freq_guard,
+			best_idx,
+			pure_sim_idx,
+			singular_promoted=singular_promoted,
 		)
 
 		# statistics block
 		if is_virtual_pick:
 			virtual_used_count += 1
-		elif best_idx != pure_sim_idx and composite_idx is not None:
+		elif best_idx != pure_sim_idx and composite_idx is not None and not singular_promoted:
 			freq_changed_count += 1
 			tradeoff_record = _tradeoff_for_pick(
 				cid, 
@@ -8202,8 +7918,6 @@ def cluster(
 	outlier_sigma_multiplier: float = 2.5,
 	head_augmentation_weight: float = 0.45,
 	head_subspace_dim: int = 256,
-	split_mixed_heads: bool = False,
-	head_purity_synonym_tau: float = 0.82,
 	use_cache: bool = True,
 	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
@@ -8339,20 +8053,6 @@ def cluster(
 	# 		report_path=os.path.splitext(clusters_fname)[0] + "_medoid_nearest_neighbor_merges.json",
 	# 		verbose=verbose,
 	# 	)
- 
-	# STEP 4d: HEAD-PURITY SPLIT PASS (dry-run report enabled by default; set split_mixed_heads=True to apply)
-	clustered_labels, _ = split_mixed_head_clusters(
-		X=X,
-		labels=clustered_labels,
-		label_texts=unique_labels,
-		model=model,
-		batch_size=batch_size,
-		encode_prompt=encode_prompt,
-		synonym_tau=head_purity_synonym_tau,
-		dry_run=not split_mixed_heads,
-		report_path=os.path.splitext(clusters_fname)[0] + "_head_purity_splits.json",
-		verbose=verbose,
-	)
 
 	# # STEP 4c: CREATE A DATAFRAME
 	df = pd.DataFrame({'label': unique_labels, 'cluster': clustered_labels})
@@ -8514,8 +8214,6 @@ def get_canonical_labels(
 	merge_canonical_min_centroid_sim: float = 0.70,
 	head_augmentation_weight: float = 0.45,
 	head_subspace_dim: int = 256,
-	split_mixed_heads: bool = False,
-	head_purity_synonym_tau: float = 0.82,
 	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
@@ -8555,8 +8253,6 @@ def get_canonical_labels(
 		merge_canonical_min_centroid_sim=merge_canonical_min_centroid_sim,
 		head_augmentation_weight=head_augmentation_weight,
 		head_subspace_dim=head_subspace_dim,
-		split_mixed_heads=split_mixed_heads,
-		head_purity_synonym_tau=head_purity_synonym_tau,
 		clusters_fname=clusters_fname,
 		encode_prompt=encode_prompt,
 		verbose=verbose,
