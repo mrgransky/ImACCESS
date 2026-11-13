@@ -2594,8 +2594,13 @@ def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
 
 _AUG_TRAILING_PUNCT = re.compile(r'[^\w]+$')
 _AUG_DOTTED_ACRONYM = re.compile(r'^(?:[a-z]\.)+[a-z]?$')
-_AUG_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|\d+[a-z]{0,2}|[a-z])$')
-_AUG_VERSION_MARKERS = frozenset({'mk', 'mark', 'mod', 'type', 'typ', 'model', 'no', 'ausf', 'series'})
+_AUG_LETTER_DOT_DIGIT = re.compile(r'(?<=[A-Za-z])\.(?=\d)')
+_AUG_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|#?\d+(?:/\d+)?[a-z]{0,2}|[a-z])$')
+_AUG_VERSION_MARKERS = frozenset({'mk', 'mark', 'mod', 'type', 'typ', 'model', 'no', 'number', 'ausf', 'series'})
+_AUG_VERSION_WORDS = frozenset({
+	'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+	'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty',
+})
 
 _AUG_APPOSITIVE_TITLES = frozenset({
 	'ambassador', 'ambassadors', 'consul', 'diplomat', 'president', 'general',
@@ -2628,6 +2633,7 @@ _AUG_HEAD_INITIAL_FACILITIES = frozenset({
 	'hotel', 'interhotel', 'motel', 'hostel', 'hostal', 'pension', 'pensionat',
 	'villa', 'chateau', 'schloss', 'palazzo', 'albergo', 'resort', 'camp',
 	'fort', 'mount', 'lake', 'port', 'cape', 'river', 'rue', 'via', 'bahnhof', 'gare',
+	'pier', 'dock', 'runway', 'berth', 'wharf', 'quay', 'hangar',
 })
 
 _FACILITY_OCCUPATION_OR_PART_FOLLOWERS = frozenset({
@@ -2641,10 +2647,34 @@ def _aug_norm_token(tok: str) -> str:
 	t = _AUG_TRAILING_PUNCT.sub('', tok.lower())
 	return t.replace('.', '') if _AUG_DOTTED_ACRONYM.match(t) else t
 
+def _aug_tokenize_pairs(label: str) -> List[Tuple[str, str]]:
+	norm_lbl = _AUG_LETTER_DOT_DIGIT.sub(' ', label)
+	return [(t, _aug_norm_token(t)) for t in norm_lbl.split() if _aug_norm_token(t)]
+
+def _aug_fac_head_idx(hp_pairs: List[Tuple[str, str]]) -> Optional[int]:
+	# 'Class T 14', 'Class G 4/5', 'Class S 10' -> 'class' when followed by a designation code
+	if (
+		len(hp_pairs) >= 2
+		and hp_pairs[0][1] == 'class'
+		and (
+			bool(_AUG_VERSION_RE.match(hp_pairs[1][1]))
+			or hp_pairs[1][1] in _AUG_VERSION_WORDS
+			or any(ch.isdigit() for ch in hp_pairs[1][1])
+		)
+	):
+		return 0
+	for i, (_, nt) in enumerate(hp_pairs):
+		if nt in _AUG_HEAD_INITIAL_FACILITIES:
+			if i == len(hp_pairs) - 1:
+				return i
+			if hp_pairs[i + 1][1] not in _FACILITY_OCCUPATION_OR_PART_FOLLOWERS:
+				return i
+	return None
+
 def _aug_strip_version_tail(toks: List[str]) -> List[str]:
 	toks = list(toks)
 	while len(toks) > 1:
-		if bool(_AUG_VERSION_RE.match(toks[-1])):
+		if bool(_AUG_VERSION_RE.match(toks[-1])) or toks[-1] in _AUG_VERSION_WORDS:
 			if toks[-1][0].isdigit() and re.fullmatch(r'[a-z]{1,3}', toks[-2]) and toks[-2] not in _AUG_VERSION_MARKERS:
 				break
 			toks.pop()
@@ -2676,7 +2706,7 @@ def _extract_single_syntactic_head(
 	5. Appositive title fallback
 	6. Morphological plural-to-singular normalization
 	"""
-	raw_pairs = [(t, _aug_norm_token(t)) for t in label.split() if _aug_norm_token(t)]
+	raw_pairs = _aug_tokenize_pairs(label)
 	if not raw_pairs:
 		clean = label.lower().strip() or "unknown"
 		return [clean], clean
@@ -2697,16 +2727,8 @@ def _extract_single_syntactic_head(
 	if len(hp_pairs) >= 2 and hp_pairs[-1][1] == 'general' and hp_pairs[-2][1] in _AUG_POSTPOSITIVE_GENERAL_TITLES:
 		hp_pairs = hp_pairs[:-1]
 
-	# 4. Check for head-initial facility nouns ('Hotel Ambassador', 'Grand Hotel Ambassador', 'Camp David')
-	fac_head_idx = None
-	for i, (_, nt) in enumerate(hp_pairs):
-		if nt in _AUG_HEAD_INITIAL_FACILITIES:
-			if i == len(hp_pairs) - 1:
-				fac_head_idx = i
-				break
-			if hp_pairs[i + 1][1] not in _FACILITY_OCCUPATION_OR_PART_FOLLOWERS:
-				fac_head_idx = i
-				break
+	# 4. Check for head-initial facility / class designators ('Hotel Ambassador', 'Pier Shed South', 'Class T 14')
+	fac_head_idx = _aug_fac_head_idx(hp_pairs)
 	if fac_head_idx is not None and fac_head_idx < len(hp_pairs) - 1:
 		hp_pairs = hp_pairs[:fac_head_idx + 1]
 
@@ -2764,7 +2786,7 @@ def _extract_syntactic_head_tokens(unique_labels: List[str]) -> Tuple[List[str],
 	single_word_vocab: set = set()
 
 	for lbl in unique_labels:
-		raw_pairs = [(t, _aug_norm_token(t)) for t in lbl.split() if _aug_norm_token(t)]
+		raw_pairs = _aug_tokenize_pairs(lbl)
 		if not raw_pairs:
 			parsed_phrases.append([])
 			raw_heads.append(lbl.lower().strip() or "unknown")
@@ -2794,16 +2816,8 @@ def _extract_syntactic_head_tokens(unique_labels: List[str]) -> Tuple[List[str],
 		if len(hp_pairs) >= 2 and hp_pairs[-1][1] == 'general' and hp_pairs[-2][1] in _AUG_POSTPOSITIVE_GENERAL_TITLES:
 			hp_pairs = hp_pairs[:-1]
 
-		# 4. Check for head-initial facility nouns ('Hotel Ambassador', 'Grand Hotel Ambassador', 'Camp David')
-		fac_head_idx = None
-		for i, (_, nt) in enumerate(hp_pairs):
-			if nt in _AUG_HEAD_INITIAL_FACILITIES:
-				if i == len(hp_pairs) - 1:
-					fac_head_idx = i
-					break
-				if hp_pairs[i + 1][1] not in _FACILITY_OCCUPATION_OR_PART_FOLLOWERS:
-					fac_head_idx = i
-					break
+		# 4. Check for head-initial facility / class designators ('Hotel Ambassador', 'Pier Shed South', 'Class T 14')
+		fac_head_idx = _aug_fac_head_idx(hp_pairs)
 		is_fac_initial = False
 		if fac_head_idx is not None and fac_head_idx < len(hp_pairs) - 1:
 			hp_pairs = hp_pairs[:fac_head_idx + 1]
@@ -6765,7 +6779,8 @@ def assign_canonical_labels(
 		return t.replace('.', '') if _DOTTED_ACRONYM.match(t) else t
 
 	def _norm_tokens(label: str) -> List[str]:
-		return [_norm_token(t) for t in label.split() if _norm_token(t)]
+		norm_lbl = _AUG_LETTER_DOT_DIGIT.sub(' ', label)
+		return [_norm_token(t) for t in norm_lbl.split() if _norm_token(t)]
 
 	def _norm_token_set(label: str) -> set:
 		return set(_norm_tokens(label))
@@ -6774,24 +6789,15 @@ def assign_canonical_labels(
 		"""(raw_token, normalised_token) pairs, 
 		aligned, empties dropped.
 		"""
-		return [(t, _norm_token(t)) for t in label.split() if _norm_token(t)]
+		norm_lbl = _AUG_LETTER_DOT_DIGIT.sub(' ', label)
+		return [(t, _norm_token(t)) for t in norm_lbl.split() if _norm_token(t)]
 
 	# ── Version tails and hygiene ─────────────────────────────────────────────
 	# 'Ventura II', 'Stalag 7A', 'Senate Resolution 77', 'Camp B': the trailing numeral / number /
 	# letter is a version marker, not part of the category. Roman numerals are matched strictly
 	# (I..XXXIX), so real words made of those letters ('mill', 'civil', 'mix') are never stripped.
-	_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|\d+[a-z]{0,2}|[a-z])$')
-	_VERSION_MARKERS = {
-		'mk',
-		'mark',
-		'mod',
-		'type',
-		'typ',
-		'model',
-		'no',
-		'ausf',
-		'series',
-	}
+	_VERSION_RE = _AUG_VERSION_RE
+	_VERSION_MARKERS = set(_AUG_VERSION_MARKERS)
 	_LEGAL_SUFFIXES = {
 		'co', 
 		'corp', 
@@ -6809,7 +6815,7 @@ def assign_canonical_labels(
 	}
 
 	def _is_version_token(tok: str) -> bool:
-		return bool(_VERSION_RE.match(tok))
+		return bool(_VERSION_RE.match(tok)) or tok in _AUG_VERSION_WORDS
 
 	def _core_rejection(core: List[str]) -> Optional[str]:
 		"""Why a synthesised head can never be a canonical: bare numeral / Roman numeral / single letter,

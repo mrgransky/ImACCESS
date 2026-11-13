@@ -1071,8 +1071,9 @@ def _post_process_(
 	)
 
 	# Metadata, Serial Numbers, and Dimensions
-	# "No. 1234", "Photo 12", "model 18", "Type 92", "Building #10", "Building 41", "Building One", "100-class", "3rd Class", "Class 5", "50 feet", "100 ft", "12 mm", "83-Footer", "25-meter"
-	_PREFIXES = r'(?:bldg\.?|building|class|no\.?|number|model|type|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)'
+	# "No. 1234", "Photo 12", "model 18", "Type 92", "100-class", "3rd Class", "Class 5", "50 feet", "100 ft", "12 mm", "83-Footer", "25-meter"
+	# Note: 'building' and 'bldg' are kept so labels like 'Building #481', 'Building #61' can be canonicalized to 'building' via clustering.
+	_PREFIXES = r'(?:class|no\.?|number|model|type|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)'
 	_NUM_OR_WORD = (
 		r'(?:\d+[A-Za-z]?|'
 		r'one|two|three|four|five|six|seven|eight|nine|ten|'
