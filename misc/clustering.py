@@ -2911,8 +2911,8 @@ def _print_augmentation_diagnostics(aug_info: Dict[str, Any], cached: bool = Fal
 	print(f"[HYBRID FEATURE SPACE AUGMENTATION{tag}]")
 	print(f"  ├─ Mathematical Model       X_tilde = [ sqrt(1 - β²) · X_full  ||  β · H_head_proj ]  (Direct-Sum Hilbert Space)")
 	print(f"  ├─ Subspace Dimensions      Full: {aug_info['base_dim']}D  ⊕  Head: {aug_info['head_subspace_dim']}D  =>  Augmented: {aug_info['augmented_dim']}D")
-	print(f"  ├─ Weighting Parameters     β (head_weight) = {aug_info['head_weight']:.4f}  |  α = sqrt(1 - β²) = {aug_info['full_weight']:.4f}")
-	print(f"  ├─ Variance Allocation      Full-Phrase Semantics: {aug_info['full_variance_pct']:.1f}%  |  Syntactic-Head Semantics: {aug_info['head_variance_pct']:.1f}%")
+	print(f"  ├─ Weighting Parameters     β (head_weight) = {aug_info['head_weight']}  |  α = sqrt(1 - β²) = {aug_info['full_weight']}")
+	print(f"  ├─ Variance Allocation      Full-Phrase Semantics: {aug_info['full_variance_pct']:.2f}%  |  Syntactic-Head Semantics: {aug_info['head_variance_pct']:.2f}%")
 	if "head_anisotropy_before" in aug_info:
 		print(
 			f"  ├─ Head Space Centering     Anisotropy (mean off-diag head cos): "
@@ -3186,17 +3186,17 @@ def _build_augmented_feature_space(
 	aug_info = {
 		"enabled": True,
 		"method": "direct_sum_syntactic_head_augmentation",
-		"head_weight": round(beta, 4),
-		"full_weight": round(alpha, 4),
-		"full_variance_pct": round(alpha * alpha * 100.0, 2),
-		"head_variance_pct": round(beta * beta * 100.0, 2),
+		"head_weight": beta,
+		"full_weight": alpha,
+		"full_variance_pct": alpha * alpha * 100.0,
+		"head_variance_pct": beta * beta * 100.0,
 		"base_dim": int(base_dim),
 		"head_subspace_dim": int(d_head),
 		"augmented_dim": int(base_dim + d_head),
 		"head_mean_centered": True,
-		"head_mean_vec_norm": round(head_mean_norm, 4),
-		"head_anisotropy_before": round(head_aniso_before, 4),
-		"head_anisotropy_after": round(head_aniso_after, 4),
+		"head_mean_vec_norm": head_mean_norm,
+		"head_anisotropy_before": head_aniso_before,
+		"head_anisotropy_after": head_aniso_after,
 		"svd_explained_energy_pct": explained_energy_pct,
 		"n_heads_indexed_in_X": int(n_indexed_in_X),
 		"n_heads_encoded_on_fly": int(n_encoded_on_fly),
@@ -3205,15 +3205,15 @@ def _build_augmented_feature_space(
 		"disentanglement_benchmark": {
 			"n_same_head_pairs": len(same_head_pairs),
 			"n_same_modifier_pairs": len(same_mod_pairs),
-			"same_head_cos_before": round(sh_before, 4),
-			"same_head_cos_after": round(sh_after, 4),
-			"same_head_delta": round(sh_after - sh_before, 4),
-			"same_modifier_cos_before": round(sm_before, 4),
-			"same_modifier_cos_after": round(sm_after, 4),
-			"same_modifier_delta": round(sm_after - sm_before, 4),
-			"margin_before": round(sh_before - sm_before, 4),
-			"margin_after": round(sh_after - sm_after, 4),
-			"margin_gain": round((sh_after - sm_after) - (sh_before - sm_before), 4),
+			"same_head_cos_before": sh_before,
+			"same_head_cos_after": sh_after,
+			"same_head_delta": sh_after - sh_before,
+			"same_modifier_cos_before": sm_before,
+			"same_modifier_cos_after": sm_after,
+			"same_modifier_delta": sm_after - sm_before,
+			"margin_before": sh_before - sm_before,
+			"margin_after": sh_after - sm_after,
+			"margin_gain": (sh_after - sm_after) - (sh_before - sm_before),
 			"example_pairs": example_pairs,
 		},
 	}
