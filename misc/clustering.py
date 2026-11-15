@@ -2595,7 +2595,9 @@ def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
 _AUG_TRAILING_PUNCT = re.compile(r'[^\w]+$')
 _AUG_DOTTED_ACRONYM = re.compile(r'^(?:[a-z]\.)+[a-z]?$')
 _AUG_LETTER_DOT_DIGIT = re.compile(r'(?<=[A-Za-z])\.(?=\d)')
+_AUG_MARKER_DOT_SUFFIX = re.compile(r'(?i)\b(mk|ausf|mod|typ|no)\.(?=[A-Za-z0-9])')
 _AUG_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|#?\d+(?:/\d+)?[a-z]{0,2}|[a-z])$')
+_AUG_ROMAN_VARIANT_RE = re.compile(r'^(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})[a-z]{1,2}$')
 _AUG_VERSION_MARKERS = frozenset({'mk', 'mark', 'mod', 'type', 'typ', 'model', 'no', 'number', 'ausf', 'series'})
 _AUG_VERSION_WORDS = frozenset({
 	'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
@@ -2647,8 +2649,12 @@ def _aug_norm_token(tok: str) -> str:
 	t = _AUG_TRAILING_PUNCT.sub('', tok.lower())
 	return t.replace('.', '') if _AUG_DOTTED_ACRONYM.match(t) else t
 
+def _aug_pre_tokenize_clean(label: str) -> str:
+	"""Split letter.digit ('S.10' -> 'S 10') and marker.suffix ('Mk.III' -> 'Mk III', 'Ausf.K' -> 'Ausf K')."""
+	return _AUG_MARKER_DOT_SUFFIX.sub(r'\1 ', _AUG_LETTER_DOT_DIGIT.sub(' ', label))
+
 def _aug_tokenize_pairs(label: str) -> List[Tuple[str, str]]:
-	norm_lbl = _AUG_LETTER_DOT_DIGIT.sub(' ', label)
+	norm_lbl = _aug_pre_tokenize_clean(label)
 	return [(t, _aug_norm_token(t)) for t in norm_lbl.split() if _aug_norm_token(t)]
 
 def _aug_fac_head_idx(hp_pairs: List[Tuple[str, str]]) -> Optional[int]:
@@ -2680,7 +2686,9 @@ def _aug_strip_version_tail(toks: List[str]) -> List[str]:
 			toks.pop()
 			while len(toks) > 1 and toks[-1] in _AUG_VERSION_MARKERS:
 				toks.pop()
-		elif len(toks) > 2 and toks[-2] in _AUG_VERSION_MARKERS and any(ch.isdigit() for ch in toks[-1]):
+		elif len(toks) > 2 and toks[-2] in _AUG_VERSION_MARKERS and (
+			any(ch.isdigit() for ch in toks[-1]) or bool(_AUG_ROMAN_VARIANT_RE.match(toks[-1]))
+		):
 			toks.pop()
 			while len(toks) > 1 and toks[-1] in _AUG_VERSION_MARKERS:
 				toks.pop()
@@ -6215,6 +6223,11 @@ _NUM_UNITS = {
 	"year": "year", "years": "year", "man": "man", "men": "man", "car": "car", "cars": "car",
 	"story": "story", "storey": "story", "floor": "floor", "seat": "seat", "seater": "seat", "wheel": "wheel", "wheeler": "wheel",
 }
+_DANGLING_MEASUREMENT_UNITS = frozenset({
+	"mm", "cm", "km", "inch", "inches", "ft", "yd",
+	"lb", "lbs", "pdr", "kg", "ton", "tons", "tonne", "tonnes",
+	"hp", "kw", "mw", "kv", "mph", "cc", "kt",
+})
 _NUM_WORDS = {
 	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
 	"eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
@@ -6833,7 +6846,7 @@ def assign_canonical_labels(
 		return t.replace('.', '') if _DOTTED_ACRONYM.match(t) else t
 
 	def _norm_tokens(label: str) -> List[str]:
-		norm_lbl = _AUG_LETTER_DOT_DIGIT.sub(' ', label)
+		norm_lbl = _aug_pre_tokenize_clean(label)
 		return [_norm_token(t) for t in norm_lbl.split() if _norm_token(t)]
 
 	def _norm_token_set(label: str) -> set:
@@ -6843,7 +6856,7 @@ def assign_canonical_labels(
 		"""(raw_token, normalised_token) pairs, 
 		aligned, empties dropped.
 		"""
-		norm_lbl = _AUG_LETTER_DOT_DIGIT.sub(' ', label)
+		norm_lbl = _aug_pre_tokenize_clean(label)
 		return [(t, _norm_token(t)) for t in norm_lbl.split() if _norm_token(t)]
 
 	# ── Version tails and hygiene ─────────────────────────────────────────────
@@ -6873,8 +6886,8 @@ def assign_canonical_labels(
 
 	def _core_rejection(core: List[str]) -> Optional[str]:
 		"""Why a synthesised head can never be a canonical: bare numeral / Roman numeral / single letter,
-		a 2-letter fragment, or a corporate suffix. Alphanumeric designations ('He 111', 'C-82') stay valid."""
-		if all(_is_version_token(t) for t in core):
+		a version marker ('Mk', 'Ausf'), a 2-letter fragment, or a corporate suffix. Alphanumeric designations ('He 111', 'C-82') stay valid."""
+		if all(_is_version_token(t) or t in _VERSION_MARKERS for t in core):
 			return 'numeral_or_letter'
 		if all(t in _LEGAL_SUFFIXES for t in core):
 			return 'corporate_suffix'
@@ -6991,6 +7004,9 @@ def assign_canonical_labels(
 			counts = Counter(tuple(h[-k:]) for h in hps if len(h) >= k)
 			for suffix, support in counts.items():
 				core = _trim_function_words(suffix)
+				while core and core[0] in _DANGLING_MEASUREMENT_UNITS:
+					core.pop(0)
+				core = _trim_function_words(core)
 				if not core:
 					continue
 				why = _core_rejection(core)
@@ -7070,7 +7086,10 @@ def assign_canonical_labels(
 				return key[0] in DESIGNATOR_PREFIXES or key[0] in EXPLICIT_PREFIXES or key[0] == 'ss'
 			if key[-1] in DESIGNATION_ENDINGS:
 				base = key[:-1]
-				return all(t not in FUNCTION_WORDS and t not in DESIGNATION_ENDINGS for t in base)
+				return (
+					all(t not in FUNCTION_WORDS and t not in DESIGNATION_ENDINGS for t in base)
+					and any(len(re.sub(r'[^a-z]', '', t)) >= 3 for t in base)
+				)
 			
 			return False
 

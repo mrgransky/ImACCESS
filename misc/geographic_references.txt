@@ -258,6 +258,7 @@ Saint-Lo
 Saint-Lô
 Saint Louis
 Saint-Lunaire
+Saint-Laurent-sur-Mer
 Saint Paul
 Saint-Sauveur-le-Vicomte
 Saint Vincent and the Grenadines
@@ -267,6 +268,7 @@ St. Croix
 St. Fongest
 St. Justina
 St. Juvin
+St. Laurent-sur-Mer
 St. Mere Eglise
 St. Mere-Eglise
 St. Nazaire
