@@ -606,8 +606,20 @@ def _post_process_(
 	ORDINALS = {
 		"first", "second", "third", "fourth", "fifth", "sixth",
 		"seventh", "eighth", "ninth", "tenth", "eleventh", "twelfth",
-		"twentieth", "thirtieth", "hundredth",
+		"thirteenth", "fourteenth", "fifteenth", "sixteenth", "seventeenth", "eighteenth", "nineteenth",
+		"twentieth", "thirtieth", "fortieth", "fiftieth", "sixtieth", "seventieth", "eightieth", "ninetieth",
+		"hundredth", "thousandth", "millionth",
 	}
+
+	_WORD_ORDINAL_RE = re.compile(
+		r'^(?:'
+		r'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|'
+		r'eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|'
+		r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth|thousandth|millionth|'
+		r'(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[- ](?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)'
+		r')$',
+		re.IGNORECASE
+	)
 
 	# BASE COLORS (Safe as single words)
 	COLORS = {
@@ -1023,12 +1035,28 @@ def _post_process_(
 		"decade", "decades", "century", "centuries",
 	}
 
-	# Expanded to include European/German month names common in Europeana (mai, oktober, etc.)
+	# Multilingual month and season names common in historical archives and Europeana
+	# (English, French, German, Italian, Spanish, Portuguese, Dutch, etc.)
 	_MONTHS_SEASONS = (
-		r'(?:january|february|march|april|may|june|july|august|september|'
-		r'october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|'
-		r'mai|oktober|dezember|märz|marz|'
-		r'spring|summer|autumn|fall|winter)'
+		r'(?:'
+		# English
+		r'january|february|march|april|may|june|july|august|september|october|november|december|'
+		r'jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|'
+		# French
+		r'janvier|fevrier|février|mars|avril|mai|juin|juillet|aout|août|septembre|octobre|novembre|decembre|décembre|'
+		r'janv|fevr|févr|juil|'
+		# German
+		r'januar|janner|jänner|februar|marz|märz|april|mai|juni|juli|august|september|oktober|november|dezember|dez|'
+		# Italian / Spanish / Portuguese
+		r'gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre|genn|febb|sett|dic|'
+		r'enero|febrero|abril|mayo|junio|julio|setiembre|octubre|diciembre|ene|abr|'
+		r'janeiro|fevereiro|marco|março|maio|junho|julho|setembro|outubro|'
+		# Dutch / Other European
+		r'januari|februari|maart|mei|augustus|ianuarie|februarie|martie|iunie|iulie|octombrie|noiembrie|listopad|tammikuu|elokuu|joulukuu|'
+		# Seasons (EN, FR, DE, IT, ES)
+		r'spring|summer|autumn|fall|winter|printemps|ete|été|automne|hiver|'
+		r'fruhling|frühling|sommer|herbst|primavera|verano|otono|otoño|invierno|inverno'
+		r')'
 	)
 
 	# Expanded historical year regex: covers years from 1400 to 2099
@@ -1045,18 +1073,32 @@ def _post_process_(
 		r'exhibitions?|expositions?|fairs?|olympics?|elections?'
 	)
 
+	_ROMAN_MONTH = r'(?:XII|XI|IX|IV|V?I{1,3}|X)'
+
 	TEMPORAL_NOISE_RE = re.compile(
 		rf'(?:'
-		# 1. Dates with a 4-digit year: "November 1962", "12 August 1945", "August 3rd, 1918", "spring of 1940", "circa 1944", "early 1900", "est 1857"
-		rf'(?:^|\b)(?:c\.|circa|early|mid|late|in|during)?\s*(?:(?:\d{{1,2}}(?:st|nd|rd|th)?\.?\s+(?:of\s+)?)?{_MONTHS_SEASONS}\.?(?:\s+\d{{1,2}}(?:st|nd|rd|th)?)?(?:,?\s+(?:of\s+)?|,?\s*){_YEAR_4DIGIT}\b|{_YEAR_4DIGIT}\s+(?:of\s+)?{_MONTHS_SEASONS}\b)|'
+		# 1. Dates with a 4-digit year in multiple languages:
+		# "November 1962", "12 August 1945", "14 aout 1914", "14 août 1914", "August 3rd, 1918", "spring of 1940", "15 mai 1940", "circa 1944", "early 1900", "est 1857"
+		rf'(?:^|\b)(?:c\.|circa|early|mid|late|in|during|le|en|du|de|vom|im|in\s+der|del|el|al)?\s*'
+		rf'(?:'
+		rf'(?:\d{{1,2}}(?:st|nd|rd|th|er|e|de|a|o)?\.?\s+(?:of\s+|de\s+|du\s+|d\'|von\s+|di\s+|del\s+)?\s*)?{_MONTHS_SEASONS}\.?'
+		rf'(?:\s+\d{{1,2}}(?:st|nd|rd|th|er|e|de|a|o)?\.?)?'
+		rf'(?:,?\s+(?:of\s+|de\s+|du\s+|d\'|von\s+|di\s+|del\s+)|,?\s*){_YEAR_4DIGIT}\b|'
+		rf'{_YEAR_4DIGIT}\s+(?:of\s+|de\s+|du\s+|d\'|von\s+|di\s+|del\s+)?{_MONTHS_SEASONS}\b'
+		rf')|'
+		# 1b. Roman-numeral month dates: "16-X-1932", "16.X.1932", "16/X/1932", "X-1932", "1932-X-16"
+		rf'^(?:\d{{1,2}}[-/. ])?{_ROMAN_MONTH}[-/. ]{_YEAR_4DIGIT}$|'
+		rf'^{_YEAR_4DIGIT}[-/. ]{_ROMAN_MONTH}(?:[-/. ]\d{{1,2}})?$|'
+		# 2. Standalone years with prefixes / decades:
 		rf'^(?:(?:c\.?|ca\.?|circa|early|mid|late|est\.?|established|founded|built|around|about|approx\.?|post|pre)[- ]+)?{_YEAR_4DIGIT}(?:s|\'s)?\b|'
-		# 2. Calendar dates WITHOUT a year: "1 October", "1. Mai", "October 1st", "4th of July"
-		rf'^\d{{1,2}}\.?(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTHS_SEASONS}\.?$|'
-		rf'^{_MONTHS_SEASONS}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?$|'
-		# 3. Chronological catalog facets: "Battles 1691", "Siege 1689", "Costume 1750", "Exhibition 1900"
+		# 3. Calendar dates WITHOUT a year in multiple languages: "14 aout", "1 October", "1. Mai", "le 14 juillet", "October 1st", "4th of July"
+		rf'^(?:le\s+|el\s+|il\s+)?\d{{1,2}}\.?(?:st|nd|rd|th|er|e|de|a|o)?\s+(?:of\s+|de\s+|d\'|von\s+|di\s+)?{_MONTHS_SEASONS}\.?$|'
+		rf'^(?:le\s+|el\s+|il\s+)?{_MONTHS_SEASONS}\.?\s+\d{{1,2}}(?:st|nd|rd|th|er|e|de|a|o)?\.?$|'
+		# 4. Chronological catalog facets: "Battles 1691", "Siege 1689", "Costume 1750", "Exhibition 1900"
 		rf'^(?:{_CATALOG_FACET_WORDS})\s+{_YEAR_4DIGIT}(?:[-–]\d{{2,4}})?$|'
-		# 4. Century expressions: "19th-century", "18th cent.", "12th century", "3rd century", "mid-19th century"
-		rf'^(?:c\.|circa|early|mid|late)?[- ]*(?:\d{{1,2}}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty[- ]first)[- ]+(?:centur(?:y|ies)|cent\.?)$'
+		# 5. Century expressions in English, French, German, Italian, Spanish:
+		# "19th-century", "18th cent.", "12th century", "20e siècle", "20ème siècle", "20. Jahrhundert", "XX secolo", "siglo XIX"
+		rf'^(?:c\.|circa|early|mid|late)?[- ]*(?:\d{{1,2}}(?:st|nd|rd|th|e|er|ème|eme)?\.?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty[- ]first)[- ]+(?:centur(?:y|ies)|cent\.?|siècle|siecle|s\.|jahrhundert|jh\.?|secolo|sec\.?|siglo)$'
 		rf')',
 		re.IGNORECASE
 	)
@@ -1383,7 +1425,12 @@ def _post_process_(
 		# Filter generic two-word echelons and temporal noise (numeric OR spelled-out) ──
 		# Drops: "First Division", "First Battalion", "1st Div", "79th Division", "53rd Infantry", "19th-century", "18th cent."
 		# Keeps: "First Infantry Division", "First Infantry Brigade", "55th Infantry Brigade"
-		if GENERIC_ECHELON_RE.match(lemma.strip()) or TEMPORAL_NOISE_RE.search(lemma.strip()) or METADATA_DIMENSION_RE.match(lemma.strip()):
+		if (
+			GENERIC_ECHELON_RE.match(lemma.strip())
+			or TEMPORAL_NOISE_RE.search(lemma.strip())
+			or METADATA_DIMENSION_RE.match(lemma.strip())
+			or _WORD_ORDINAL_RE.match(lemma.strip())
+		):
 			return True
 
 		# Rule 2: Single-word generic terms
@@ -2733,7 +2780,7 @@ def _post_process_(
 					print(f"\t[SKIPPED] {repr(lemma):<55} image descriptor")
 				continue
 
-			if lemma.lower() in ORDINALS:
+			if lemma.lower() in ORDINALS or _WORD_ORDINAL_RE.match(lemma.strip()):
 				if verbose:
 					print(f"\t[SKIPPED] {repr(lemma):<55} ordinal")
 				continue
