@@ -2598,10 +2598,29 @@ _AUG_LETTER_DOT_DIGIT = re.compile(r'(?<=[A-Za-z])\.(?=\d)')
 _AUG_MARKER_DOT_SUFFIX = re.compile(r'(?i)\b(mk|ausf|mod|typ|no)\.(?=[A-Za-z0-9])')
 _AUG_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|#?\d+(?:/\d+)?[a-z]{0,2}|[a-z])$')
 _AUG_ROMAN_VARIANT_RE = re.compile(r'^(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})[a-z]{1,2}$')
+_AUG_SUBVARIANT_RE = re.compile(r'^[a-z]-\d+(?:/[a-z0-9-]+)?$')
+_AUG_ORDINAL_OR_YEAR_RE = re.compile(r'^(?:\d+(?:st|nd|rd|th)|1[89]\d\d)$')
 _AUG_VERSION_MARKERS = frozenset({'mk', 'mark', 'mod', 'type', 'typ', 'model', 'no', 'number', 'ausf', 'series'})
 _AUG_VERSION_WORDS = frozenset({
 	'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
 	'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty',
+})
+_AUG_ROLE_CODES_AFTER_VERSION = frozenset({'pr', 'gr', 'nf', 'lf', 'hf', 'fb', 'tf', 'tr', 'fr'})
+_AUG_LEGAL_OR_GEN_SUFFIXES = frozenset({
+	'co', 'corp', 'inc', 'ltd', 'limited', 'plc', 'gmbh', 'ag', 'llc', 'bros', 'sons', 'jr', 'sr',
+})
+_AUG_COMPOUND_MODEL_EXCLUDE = frozenset({
+	'the', 'and', 'for', 'nor', 'but', 'yet', 'per', 'via',
+	'war', 'ww', 'no', 'nr', 'mk', 'typ', 'mod', 'day', 'age', 'era',
+})
+_AUG_SHIP_PREFIXES = frozenset({
+	'uss', 'usat', 'hms', 'hmcs', 'hmas', 'hmnzs', 'usns', 'uscgc', 'rms', 'mv',
+	'ss', 'cutter', 'cruiser', 'battleship', 'destroyer', 'submarine',
+})
+_AUG_GEO_FACILITY_PREFIXES = frozenset({'cape', 'fort', 'port', 'mount', 'lake', 'river'})
+_AUG_TERMINAL_FACILITY_NOUNS = frozenset({
+	'station', 'lighthouse', 'bridge', 'airport', 'airfield', 'hospital',
+	'dam', 'reservoir', 'harbor', 'harbour', 'tower', 'building', 'church', 'base', 'plant',
 })
 
 _AUG_APPOSITIVE_TITLES = frozenset({
@@ -2622,7 +2641,10 @@ _AUG_FACILITY_EVENT_FOLLOWERS = frozenset({
 	'embassy', 'consulate', 'legation', 'mission', 'delegation', 'commission',
 	'committee', 'conference', 'meeting', 'summit', 'reception', 'banquet',
 	'luncheon', 'dinner', 'party', 'ball', 'visit', 'tour', 'arrival', 'departure',
-	'car', 'plane', 'aircraft', 'ship', 'yacht', 'train', 'hospital', 'school',
+	'car', 'plane', 'aircraft', 'ship', 'yacht', 'train', 'truck', 'motor', 'motors',
+	'electric', 'dynamics', 'aviation', 'aerospace', 'industries', 'supply',
+	'company', 'corporation', 'store', 'warehouse', 'depot', 'factory', 'plant', 'shop', 'works',
+	'hospital', 'school',
 	'university', 'college', 'library', 'museum', 'park', 'square', 'street',
 	'avenue', 'boulevard', 'memorial', 'monument', 'statue', 'portrait', 'bust',
 	'tomb', 'grave', 'funeral', 'wedding', 'wife', 'family', 'staff', 'guard',
@@ -2669,34 +2691,133 @@ def _aug_fac_head_idx(hp_pairs: List[Tuple[str, str]]) -> Optional[int]:
 		)
 	):
 		return 0
+	terminal_nt = hp_pairs[-1][1] if hp_pairs else ''
 	for i, (_, nt) in enumerate(hp_pairs):
 		if nt in _AUG_HEAD_INITIAL_FACILITIES:
 			if i == len(hp_pairs) - 1:
 				return i
+			if nt in _AUG_GEO_FACILITY_PREFIXES and terminal_nt in _AUG_TERMINAL_FACILITY_NOUNS:
+				continue
 			if hp_pairs[i + 1][1] not in _FACILITY_OCCUPATION_OR_PART_FOLLOWERS:
 				return i
 	return None
 
 def _aug_strip_version_tail(toks: List[str]) -> List[str]:
 	toks = list(toks)
+	stripped_version = False
 	while len(toks) > 1:
 		if bool(_AUG_VERSION_RE.match(toks[-1])) or toks[-1] in _AUG_VERSION_WORDS:
-			if toks[-1][0].isdigit() and re.fullmatch(r'[a-z]{1,3}', toks[-2]) and toks[-2] not in _AUG_VERSION_MARKERS:
+			if toks[-1][0].isdigit() and (
+				'/' in toks[-2]
+				or (
+					re.fullmatch(r'[a-z]{1,3}', toks[-2])
+					and toks[-2] not in _AUG_VERSION_MARKERS
+					and toks[-2] not in _AUG_COMPOUND_MODEL_EXCLUDE
+				)
+			):
 				break
 			toks.pop()
+			stripped_version = True
 			while len(toks) > 1 and toks[-1] in _AUG_VERSION_MARKERS:
 				toks.pop()
 		elif len(toks) > 2 and toks[-2] in _AUG_VERSION_MARKERS and (
 			any(ch.isdigit() for ch in toks[-1]) or bool(_AUG_ROMAN_VARIANT_RE.match(toks[-1]))
 		):
 			toks.pop()
+			stripped_version = True
 			while len(toks) > 1 and toks[-1] in _AUG_VERSION_MARKERS:
 				toks.pop()
+		elif _AUG_SUBVARIANT_RE.match(toks[-1]) and any(ch.isdigit() for ch in toks[-2]) and not _AUG_ORDINAL_OR_YEAR_RE.match(toks[-2]):
+			toks.pop()
+			stripped_version = True
 		elif toks[-1] in {'mk', 'ausf'}:
 			toks.pop()
+			stripped_version = True
 		else:
 			break
+	while stripped_version and len(toks) > 1 and toks[-1] in _AUG_ROLE_CODES_AFTER_VERSION:
+		toks.pop()
 	return toks
+
+def _aug_extract_base_pairs(raw_pairs: List[Tuple[str, str]]) -> Tuple[List[Tuple[str, str]], bool]:
+	"""Apply steps 1-4 (preposition cut, version/legal suffix strip, post-positive general, facility head)."""
+	cut = len(raw_pairs)
+	for i, (_, nt) in enumerate(raw_pairs):
+		if i > 0 and nt in _CORE_PREPOSITIONS:
+			cut = i
+			break
+	hp_pairs = raw_pairs[:cut]
+
+	norm_seq = _aug_strip_version_tail([nt for _, nt in hp_pairs])
+	hp_pairs = hp_pairs[:len(norm_seq)]
+
+	if len(hp_pairs) >= 2 and hp_pairs[-1][1] == 'general' and hp_pairs[-2][1] in _AUG_POSTPOSITIVE_GENERAL_TITLES:
+		hp_pairs = hp_pairs[:-1]
+
+	while len(hp_pairs) > 1 and hp_pairs[-1][1] in _AUG_LEGAL_OR_GEN_SUFFIXES:
+		hp_pairs = hp_pairs[:-1]
+
+	fac_head_idx = _aug_fac_head_idx(hp_pairs)
+	is_fac_initial = False
+	if fac_head_idx is not None and fac_head_idx < len(hp_pairs) - 1:
+		hp_pairs = hp_pairs[:fac_head_idx + 1]
+		is_fac_initial = True
+
+	return hp_pairs, is_fac_initial
+
+def _aug_head_from_pairs(hp_pairs: List[Tuple[str, str]], raw_fallback: str) -> Tuple[str, Optional[str]]:
+	"""Resolve head token (keeping 1-3 letter + number or slash-unit compounds) and optional compound surface."""
+	if not hp_pairs:
+		return raw_fallback, None
+	last_rt, last_nt = hp_pairs[-1]
+	if len(hp_pairs) >= 2 and last_nt and last_nt[0].isdigit():
+		prev_rt, prev_nt = hp_pairs[-2]
+		if '/' in prev_nt:
+			clean_prev = _AUG_TRAILING_PUNCT.sub('', prev_rt) or prev_rt
+			clean_last = _AUG_TRAILING_PUNCT.sub('', last_rt) or last_rt
+			return f"{prev_nt} {last_nt}", f"{clean_prev} {clean_last}"
+		if (
+			re.fullmatch(r'[a-z]{1,3}', prev_nt)
+			and prev_nt not in _CORE_PREPOSITIONS
+			and prev_nt not in _AUG_COMPOUND_MODEL_EXCLUDE
+			and prev_nt not in _AUG_VERSION_MARKERS
+		):
+			clean_prev = _AUG_TRAILING_PUNCT.sub('', prev_rt) or prev_rt
+			clean_last = _AUG_TRAILING_PUNCT.sub('', last_rt) or last_rt
+			return f"{prev_nt}{last_nt}", f"{clean_prev} {clean_last}"
+	return last_nt, None
+
+def _aug_appositive_fallback(
+	hp_pairs: List[Tuple[str, str]],
+	h: str,
+	is_fac: bool,
+	known_vocab: Optional[set] = None,
+	raw_head_counts: Optional[Counter] = None,
+	untitled_head_counts: Optional[Counter] = None,
+) -> Optional[Tuple[str, List[Tuple[str, str]]]]:
+	"""Return (title_head, truncated_pairs) when a personal title precedes a surname, skipping ship prefixes."""
+	if is_fac or len(hp_pairs) < 2:
+		return None
+	if raw_head_counts is not None and untitled_head_counts is not None:
+		if not (raw_head_counts[h] == 1 or (raw_head_counts[h] <= 2 and untitled_head_counts[h] == 0)):
+			return None
+	for i, (_, nt) in enumerate(hp_pairs[:-1]):
+		stem_nt = _stem_token(nt)
+		if nt not in _AUG_APPOSITIVE_TITLES and stem_nt not in _AUG_APPOSITIVE_TITLES:
+			continue
+		if any(pt in _AUG_SHIP_PREFIXES for _, pt in hp_pairs[:i]):
+			continue
+		tail = hp_pairs[i + 1:]
+		if tail and all(
+			tp[0][:1].isupper()
+			and tp[1] not in _AUG_FACILITY_EVENT_FOLLOWERS
+			and not any(ch.isdigit() for ch in tp[1])
+			for tp in tail
+		):
+			target_title = stem_nt if (known_vocab and stem_nt in known_vocab) else nt
+			if raw_head_counts is None or raw_head_counts.get(target_title, 0) >= 2 or target_title in _AUG_APPOSITIVE_TITLES:
+				return target_title, hp_pairs[:i + 1]
+	return None
 
 def _extract_single_syntactic_head(
 	label: str,
@@ -2706,64 +2827,20 @@ def _extract_single_syntactic_head(
 ) -> Tuple[List[str], str]:
 	"""
 	Extract the syntactic head phrase and normalized head token for a single label.
-	Applies six syntactic rules:
-	1. Prepositional post-modifier truncation
-	2. Version marker stripping
-	3. Romance post-positive 'general' stripping
-	4. Head-initial facility noun extraction
-	5. Appositive title fallback
-	6. Morphological plural-to-singular normalization
+	Shares normalization rules with _extract_syntactic_head_tokens.
 	"""
 	raw_pairs = _aug_tokenize_pairs(label)
 	if not raw_pairs:
 		clean = label.lower().strip() or "unknown"
 		return [clean], clean
 
-	# 1. Truncate before first preposition (never at index 0)
-	cut = len(raw_pairs)
-	for i, (_, nt) in enumerate(raw_pairs):
-		if i > 0 and nt in _CORE_PREPOSITIONS:
-			cut = i
-			break
-	hp_pairs = raw_pairs[:cut]
+	hp_pairs, is_fac = _aug_extract_base_pairs(raw_pairs)
+	h, _ = _aug_head_from_pairs(hp_pairs, raw_pairs[-1][1])
 
-	# 2. Strip trailing version markers
-	norm_seq = _aug_strip_version_tail([nt for _, nt in hp_pairs])
-	hp_pairs = hp_pairs[:len(norm_seq)]
+	app = _aug_appositive_fallback(hp_pairs, h, is_fac, known_vocab, raw_head_counts, untitled_head_counts)
+	if app is not None:
+		h, hp_pairs = app
 
-	# 3. Strip post-positive 'general' after civil/diplomatic titles
-	if len(hp_pairs) >= 2 and hp_pairs[-1][1] == 'general' and hp_pairs[-2][1] in _AUG_POSTPOSITIVE_GENERAL_TITLES:
-		hp_pairs = hp_pairs[:-1]
-
-	# 4. Check for head-initial facility / class designators ('Hotel Ambassador', 'Pier Shed South', 'Class T 14')
-	fac_head_idx = _aug_fac_head_idx(hp_pairs)
-	if fac_head_idx is not None and fac_head_idx < len(hp_pairs) - 1:
-		hp_pairs = hp_pairs[:fac_head_idx + 1]
-
-	h = hp_pairs[-1][1] if hp_pairs else raw_pairs[-1][1]
-
-	# 5. Appositive title fallback
-	if fac_head_idx is None and len(hp_pairs) >= 2:
-		is_candidate_appositive = True
-		if raw_head_counts is not None and untitled_head_counts is not None:
-			is_candidate_appositive = (raw_head_counts[h] == 1 or (raw_head_counts[h] <= 2 and untitled_head_counts[h] == 0))
-		if is_candidate_appositive:
-			for i, (rt, nt) in enumerate(hp_pairs[:-1]):
-				stem_nt = _stem_token(nt)
-				if nt in _AUG_APPOSITIVE_TITLES or stem_nt in _AUG_APPOSITIVE_TITLES:
-					tail = hp_pairs[i + 1:]
-					if tail and all(
-						tp[0][:1].isupper()
-						and tp[1] not in _AUG_FACILITY_EVENT_FOLLOWERS
-						and not any(ch.isdigit() for ch in tp[1])
-						for tp in tail
-					):
-						target_title = stem_nt if (known_vocab and stem_nt in known_vocab) else nt
-						h = target_title
-						hp_pairs = hp_pairs[:i + 1]
-						break
-
-	# 6. Morphological plural-to-singular
 	stem_h = _stem_token(h)
 	if stem_h != h and len(stem_h) >= 3:
 		if known_vocab is None or stem_h in known_vocab:
@@ -2779,15 +2856,6 @@ def _extract_syntactic_head_tokens(
 	"""
 	Extract corpus-normalized syntactic head tokens (Embedding Feature Space Augmentation)
 	and Step 6 (Canonical Selection).
-
-	Handles:
-	1. Prepositional post-modifier truncation (via _CORE_PREPOSITIONS including 'to', e.g. 'Ambassador to Cuba' -> 'ambassador').
-	2. Trailing version/designation marker stripping ('Ventura Mk II' -> 'ventura').
-	3. Romance post-positive 'general' stripping after civil/diplomatic titles ('Cuban Consul General' -> 'consul').
-	4. Head-initial facility noun extraction ('Hotel Ambassador' -> 'hotel', 'Camp David' -> 'camp').
-	5. Corpus-aware appositive title fallback ('Cuban Ambassador Guillermo Belt' -> 'ambassador' when 'belt' is a
-	   singleton surname in the corpus, while preserving recurring historical figures like 'Roosevelt').
-	6. Corpus-aware plural-to-singular unification ('Ambassadors' -> 'ambassador', 'Embassies' -> 'embassy').
 	"""
 	parsed_phrases: List[List[Tuple[str, str]]] = []
 	raw_heads: List[str] = []
@@ -2810,32 +2878,14 @@ def _extract_syntactic_head_tokens(
 			clean_rt = _AUG_TRAILING_PUNCT.sub('', rt) or rt
 			surface_counts[nt][clean_rt] += 1
 
-		# 1. Truncate before first preposition (never at index 0)
-		cut = len(raw_pairs)
-		for i, (_, nt) in enumerate(raw_pairs):
-			if i > 0 and nt in _CORE_PREPOSITIONS:
-				cut = i
-				break
-		hp_pairs = raw_pairs[:cut]
-
-		# 2. Strip trailing version markers
-		norm_seq = _aug_strip_version_tail([nt for _, nt in hp_pairs])
-		hp_pairs = hp_pairs[:len(norm_seq)]
-
-		# 3. Strip post-positive 'general' after civil/diplomatic titles ('Consul General' -> 'Consul')
-		if len(hp_pairs) >= 2 and hp_pairs[-1][1] == 'general' and hp_pairs[-2][1] in _AUG_POSTPOSITIVE_GENERAL_TITLES:
-			hp_pairs = hp_pairs[:-1]
-
-		# 4. Check for head-initial facility / class designators ('Hotel Ambassador', 'Pier Shed South', 'Class T 14')
-		fac_head_idx = _aug_fac_head_idx(hp_pairs)
-		is_fac_initial = False
-		if fac_head_idx is not None and fac_head_idx < len(hp_pairs) - 1:
-			hp_pairs = hp_pairs[:fac_head_idx + 1]
-			is_fac_initial = True
+		hp_pairs, is_fac_initial = _aug_extract_base_pairs(raw_pairs)
+		h_raw, comp_surface = _aug_head_from_pairs(hp_pairs, raw_pairs[-1][1])
+		if comp_surface is not None:
+			surface_counts[h_raw][comp_surface] += 1
 
 		fac_initial_flags.append(is_fac_initial)
 		parsed_phrases.append(hp_pairs)
-		raw_heads.append(hp_pairs[-1][1] if hp_pairs else raw_pairs[-1][1])
+		raw_heads.append(h_raw)
 
 	raw_head_counts = Counter(raw_heads)
 	known_vocab = set(raw_head_counts.keys()) | single_word_vocab
@@ -2859,31 +2909,12 @@ def _extract_syntactic_head_tokens(
 		h = h_raw
 		res_pairs = list(hp_pairs)
 
-		# 5. Corpus-aware appositive title fallback:
-		# If the phrase contains an explicit title/role noun followed by capitalized personal name tokens
-		# whose trailing surname is a singleton head in the corpus (raw_head_counts[h] == 1), OR appears
-		# at most twice and exclusively with a title (untitled_head_counts[h] == 0, e.g. 'Ambassador Wallace'
-		# + 'Ambassador Hugh C. Wallace'), fall back to the title noun ('ambassador'), while preserving
-		# recurring historical figures that also appear untitled ('President Roosevelt' + 'Franklin D. Roosevelt').
-		if not is_fac and len(hp_pairs) >= 2 and (raw_head_counts[h] == 1 or (raw_head_counts[h] <= 2 and untitled_head_counts[h] == 0)):
-			for i, (rt, nt) in enumerate(hp_pairs[:-1]):
-				stem_nt = _stem_token(nt)
-				if nt in _AUG_APPOSITIVE_TITLES or stem_nt in _AUG_APPOSITIVE_TITLES:
-					tail = hp_pairs[i + 1:]
-					if tail and all(
-						tp[0][:1].isupper()
-						and tp[1] not in _AUG_FACILITY_EVENT_FOLLOWERS
-						and not any(ch.isdigit() for ch in tp[1])
-						for tp in tail
-					):
-						target_title = stem_nt if stem_nt in known_vocab else nt
-						if raw_head_counts.get(target_title, 0) >= 2 or target_title in _AUG_APPOSITIVE_TITLES:
-							h = target_title
-							res_pairs = hp_pairs[:i + 1]
-							n_appositive_normalized += 1
-							if len(appositive_examples) < 10:
-								appositive_examples.append({"label": lbl, "from_head": h_raw, "to_head": h})
-							break
+		app = _aug_appositive_fallback(hp_pairs, h_raw, is_fac, known_vocab, raw_head_counts, untitled_head_counts)
+		if app is not None:
+			h, res_pairs = app
+			n_appositive_normalized += 1
+			if len(appositive_examples) < 10:
+				appositive_examples.append({"label": lbl, "from_head": h_raw, "to_head": h})
 
 		# 6. Corpus-aware plural-to-singular normalization ('ambassadors' -> 'ambassador', 'embassies' -> 'embassy')
 		stem_h = _stem_token(h)
@@ -6374,6 +6405,7 @@ def _pick_best_candidate(
 	pure_sim_idx: int,
 	freq_gain_guard: float,
 	sim_gap_guard: float,
+	min_virtual_flip_containment: float = 0.10,
 ) -> Dict[str, Any]:
 	"""
 	Composite argmax + frequency guard (only when frequency flipped the decision).
@@ -6406,11 +6438,23 @@ def _pick_best_candidate(
 		best_idx = composite_idx
 	else:
 		gain = raw_freqs[composite_idx] / max(raw_freqs[nofreq_idx], 1)
-		if gain >= freq_gain_guard:
-			freq_guard = f'passed ({gain:.1f}x)'
-		else:
+		cont_scores = scores.get('cont_scores')
+		comp_cont = float(cont_scores[composite_idx]) if cont_scores is not None else 1.0
+		if gain < freq_gain_guard:
 			freq_guard = f'reverted ({gain:.1f}x < {freq_gain_guard:.0f}x)'
 			best_idx = nofreq_idx
+		elif (
+			virtual_flags[nofreq_idx]
+			and not virtual_flags[composite_idx]
+			and cluster_size >= 6
+			and comp_cont < min_virtual_flip_containment
+		):
+			freq_guard = (
+				f'reverted (containment {comp_cont:.2f} < {min_virtual_flip_containment:.2f} vs virtual)'
+			)
+			best_idx = nofreq_idx
+		else:
+			freq_guard = f'passed ({gain:.1f}x)'
 
 	return {
 		'best_idx': best_idx,
