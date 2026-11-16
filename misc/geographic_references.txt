@@ -49,6 +49,19 @@ Oceania
 North America
 South America
 Antarctica
+Basque Country
+Catalonia
+East Asia
+East Prussia
+Euzkadi
+Far East
+French Riviera
+North Africa
+North Russia
+Peloponnese
+South Pacific
+Southeast Asia
+West Indies
 
 Afghanistan
 Albania
@@ -89,6 +102,7 @@ Cameroon
 Canada
 Cape Verde
 Central African Republic
+Ceylon
 Chad
 Czecho-Slovak
 Czecho Slav
@@ -127,6 +141,7 @@ Ethiopia
 Fiji
 Finland
 France
+Frankreich
 
 Gabon
 Gambia
@@ -217,6 +232,7 @@ Niger
 Nigeria
 North Korea
 North Macedonia
+North Vietnam
 Norway
 
 Pakistan
@@ -301,6 +317,8 @@ Somalia
 South Africa
 South Korea
 South Sudan
+South Vietnam
+Soviet Union
 Spain
 Sri Lanka
 Sudan
@@ -330,10 +348,13 @@ United Kingdom
 United States
 United State
 United States of America
+Upper Volta
 USA
 U.S.
 U. S.
 U.S.A.
+USSR
+U.S.S.R.
 Uruguay
 Uzbekistan
 
@@ -348,6 +369,7 @@ Wales
 Yemen
 Yugoslavia
 
+Zaire
 Zambia
 Zealand
 Zimbabwe
@@ -672,6 +694,729 @@ Washington D.C.
 Welch
 Windsor
 Winslow
+Abilene
+Absecon
+Adams
+Admiralty Head
+Admiralty Inlet
+Akutan
+Alameda
+Albuquerque
+Alcatraz
+Alexai Point
+Alki Point
+Allegheny
+Alligator Reef
+Altoona
+Amelia Island
+Anacapa Island
+Anacostia
+Anastasia
+Annapolis
+Ano Nuevo
+Ano Nuevo Island
+Apalachia
+Aransas Pass
+Ashokan
+Ashtabula
+Ashtabula Harbor
+Assateague
+Au Sable
+Avery Rock
+Ballast Point
+Banana River
+Bangor
+Bar Harbor
+Barber Point
+Barbers Point
+Barkhamsted
+Barnegat
+Barnstable
+Barron Fork
+Bass Harbor Head
+Bass River
+Bear Creek
+Bear Island
+Bear Mountain
+Beavertail
+Bedloe's Island
+Belle Isle
+Belmont
+Benicia
+Bergen Point
+Bethlehem
+Bethpage
+Big Bethel
+Big Delta
+Big Ridge
+Big Sable
+Biloxi
+Bird Island
+Black Rock
+Black Tom Island
+Block Island
+Bloody Point
+Blue Ridge
+Bluff Point
+Bluff Shoal
+Bodie Island
+Bolivar Point
+Bon Fouca
+Boon Island
+Boston Harbor
+Brandywine Shoal
+Brant Point
+Browns Head
+Bull Shoals
+Burnt Coat Harbor
+Burrows Island
+Butte
+Buzzards Bay
+Calcasieu
+Calumet Harbor
+Cana Island
+Cape Ann
+Cape Arago
+Cape Blanco
+Cape Canaveral
+Cape Charles
+Cape Cod
+Cape Cod Canal
+Cape Decision
+Cape Elizabeth
+Cape Fear
+Cape Flattery
+Cape Florida
+Cape Hancock
+Cape Hatteras
+Cape Henlopen
+Cape Henry
+Cape Hinchinbrook
+Cape Kennedy
+Cape Lookout
+Cape May
+Cape Mendocino
+Cape Neddick
+Cape Romain
+Cape Royal
+Cape San Blas
+Cape Sarichef
+Cape Spencer
+Cape St. Elias
+Cape St. George
+Carquinez Strait
+Carysfort Reef
+Cat Island
+Cedar Keys
+Cedar Point
+Center Hill
+Chandeleur
+Charleston
+Charlevoix
+Charlotte Harbor
+Chatham
+Chattanooga
+Chesapeake Bay
+Chester Shoal
+Chickamauga
+Chillicothe
+Choctaw Point
+Clark Point
+Cohansey
+Columbia River
+Conneaut Harbor
+Copper Harbor
+Coquille River
+Coxsackie
+Crisp Point
+Crown Point
+Cumberland Head
+Currituck Beach
+Danville
+Dayton
+Daytona Beach
+Deer Island
+Detour Reef
+Detroit River
+Diamond Head
+Diamond Shoals
+Dice Head
+Dothan
+Doubling Point
+Downey
+Dry Tortugas
+Dry Tortugas Island
+Dumpling Rock
+Dunsmuir
+Dutch Harbor
+Duxbury Pier
+Eagle Harbor
+Eagle Island
+Eagle River
+East Brother Island
+East Chop
+Eastern Point
+Eatons Neck
+Edgemoor
+Ediz Hook
+Egg Rock
+Eggemoggin
+Egmont Key
+Eklutna
+El Segundo
+El Toro
+Elmendorf
+Erie
+Erin
+Everglades
+Excursion Inlet
+Fairfax
+Fairhaven
+Fairport
+Farallon Island
+Farmingdale
+Fenwick Island
+Fire Island
+Five Finger Islands
+Fontana
+Fort Amador
+Fort Barrancas
+Fort Belvoir
+Fort Benning
+Fort Bliss
+Fort Bragg
+Fort Brooke
+Fort Carson
+Fort Churchill
+Fort Clayton
+Fort Custer
+Fort Davis
+Fort Devens
+Fort Douglas
+Fort Dupont
+Fort Eustis
+Fort Gratiot
+Fort Hamilton
+Fort Huachuca
+Fort Hunter Liggett
+Fort Jefferson
+Fort Kamehameha
+Fort Knox
+Fort Kobbe
+Fort Laramie
+Fort Lee
+Fort Lewis
+Fort Ligonier
+Fort Loudoun
+Fort MacArthur
+Fort Madison
+Fort Marion
+Fort Mason
+Fort McClellan
+Fort McHenry
+Fort McKinley
+Fort McNair
+Fort Meade
+Fort Meigs
+Fort Mifflin
+Fort Myer
+Fort Niagara
+Fort Oglethorpe
+Fort Ontario
+Fort Ord
+Fort Popham
+Fort Porter
+Fort Putnam
+Fort Richardson
+Fort Riley
+Fort Russell
+Fort Sam Houston
+Fort Santiago
+Fort Scott
+Fort Sedgwick
+Fort Shafter
+Fort Sherman
+Fort Sill
+Fort Sumter
+Fort Taylor
+Fort Totten
+Fort Trumbull
+Fort Vancouver
+Fort Washington
+Fort Wayne
+Fort Wilkins
+Fort Williams
+Fort Winfield Scott
+Fort Wood
+Fort Worden
+Forty-Mile Point
+Fox Point
+Franconia Notch
+Franklin Island
+French Frigate Shoals
+Gasparilla Island
+Gay Head
+Georgetown
+Gettysburg
+Glenview
+Golden Gate
+Grand Canyon
+Grand Coulee
+Grand Island
+Grand Marais
+Grand Traverse
+Grassy Island
+Great Lakes
+Greenbury Point
+Greens Ledge
+Grindel Point
+Grosse Isle
+Grossepoint
+Guard Island
+Gull Island
+Gurnet
+Guthrie
+Halfmoon Reef
+Halfway Rock
+Hampton Roads
+Hana
+Harcourt
+Harlem
+Harpers Ferry
+Harrisburg
+Hawkins Point
+Head of Passes
+Hendricks Head
+Hereford Inlet
+Heron Neck
+Hillsboro Inlet
+Hiwassee
+Hog Island
+Holland Island
+Honolulu
+Hooper Island
+Hooper Strait
+Horn Island
+Hospital Point
+Hunters Point
+Huron Island
+Hyannis
+Hyde Park
+Independence
+Indian Island
+Indiana Harbor
+Iona Island
+Ipswich
+Islamorada
+Isle aux Galets
+Isle aux Herbes
+Isle la Motte
+Isles of Shoals
+James Island
+James River
+Jersey City
+Jones Beach
+Jones Point
+Joplin
+Jordan Point
+Ka Lae
+Kaena Point
+Kahala Point
+Kahului
+Kalamazoo
+Kalihi
+Kaneohe
+Kauhola Point
+Kauiki Head
+Kaula Rock
+Keahole Point
+Kearney
+Kecoughtan
+Keesler
+Kenosha
+Kensico
+Ketchikan
+Kewaunee
+Keweenaw
+Key Biscayne
+Kilauea
+Kingman
+Kingsland
+Kingsport
+Klamath
+Kole Kole Pass
+La Pointe
+Laconia
+Lake Champlain
+Lake City
+Lake Glendale
+Lake Success
+Lake Tahoe
+Lake Taneycomo
+Lake Waco
+Lake Washington
+Laupahoehoe Point
+Leading Point
+Libby Island
+Lime Kiln
+Lime Point
+Lime Rock
+Lincoln, Nebraska
+Lincoln Rock
+Liston
+Little Bighorn
+Little Gull
+Little River
+Little Rock
+Little Sable Point
+Little Traverse
+Long Island
+Long Point
+Long Prairie
+Lorain
+Loring
+Los Alamos
+Louisville
+Love Point
+Lubec Channel
+Ludington
+Ludlam Beach
+Lynde Point
+MacDill
+Mahakona
+Mahukona
+Makapuu
+Makapuu Point
+Mamajuda
+Manistee
+Manistique
+Manitowoc
+Mantoloking
+Manzanar
+Marcus Hook
+Mare Island
+Marquette
+Marrowstone Point
+Marshall Point
+Martin Reef
+Matagorda
+McChord
+Mendota
+Michigan City
+Middletown
+Midland
+Mile Rocks
+Minneapolis Shoal
+Miramar
+Mississippi River
+Missouri River
+Missoula
+Mobile
+Mobile Bay
+Mobile Point
+Molokai
+Monmouth
+Monomoy Point
+Montauk
+Montauk Point
+Moose Peak
+Morgan Point
+Morganton
+Mount Desert
+Mt. Hope
+Mt. Olympus
+Mt. Rainier
+Mt. Whitney
+Muroc
+Muskegon
+Mussel Bed Shoals
+Nantucket
+Napoopoo
+Nash Island
+Navesink
+Nawiliwili Harbor
+Ned Point
+New Britain
+New Dungeness
+New Philadelphia
+New Point Comfort
+Newton
+Nobska Point
+North Head
+North Island
+Nottely
+Nuuanu Pali
+Oak Island
+Ocracoke
+Ogdensburg
+Olcott
+Old Mackinac Point
+Old Plantation Flats
+Old Point Comfort
+Olney
+Olympia
+Opa Locka
+Oswego
+Outer Island
+Owls Head
+Palmer Island
+Pass a Loutre
+Pass Christian
+Pass Manchac
+Patos Island
+Patuxent River
+Paukaa Point
+Pauwalu Point
+Pearl Harbor
+Pecos River
+Pelham Bay
+Peninsula Point
+Pensacola
+Pepeekeo Point
+Petit Manan
+Petoskey
+Pickwick
+Piedras Blancas
+Pigeon Point
+Pinole
+Plattsburgh
+Plum Beach
+Plum Island
+Poe Reef
+Point Arguello
+Point Aux Fer Reef
+Point Betsie
+Point Bonita
+Point Comfort
+Point Conception
+Point Fermin
+Point Hueneme
+Point Iroquois
+Point Isabel
+Point Judith
+Point Loma
+Point Lookout
+Point Montara
+Point No Point
+Point Peninsula
+Point Pinos
+Point Retreat
+Point Reyes
+Point Sur
+Point Vicente
+Point Wilson
+Pointe aux Barques
+Pointe Aux Herbes
+Pointe aux Roches
+Pooles Island
+Port Austin Reef
+Port Eads
+Port Jefferson
+Port Penn
+Port Washington
+Potomac River
+Pottawatomie
+Presque Isle
+Princes Bay
+Princess Bay
+Providence
+Pueblo
+Puget Sound
+Pulley Point
+Punta de Los Reyes
+Punta Gorda
+Quantico
+Quartzsite
+Quoddy Head
+Quonset Point
+Race Point
+Race Rock
+Racine
+Racine Reef
+Ragged Point
+Rangeley
+Rebecca Shoal
+Red Fish Bar
+Reedy Island
+Renton
+Rigolets
+Roanoke Marshes
+Robbins Reef
+Robinson Point
+Rock Island
+Rock of Ages
+Rockaway
+Rockland
+Romer Shoals
+Rondout
+Rose Island
+Round Island
+Sagamore
+Sakonnet Point
+Salem
+San Bernardino
+San Fernando
+San Luis Obispo
+San Marcos
+Sand Hills
+Sand Island
+Sand Key
+Sandy Hook
+Sandy Neck
+Sandy Point
+Sanibel Island
+Sapelo
+Sapelo Island
+Sarasota
+Saybrook
+Scituate
+Scotch Cap
+Scranton
+Sea Girt
+Sedalia
+Sentinel Island
+Sheboygan
+Sherwood Point
+Shinnecock
+Shinnecock Bay
+Ship Island
+Ship John Shoal
+Ship Shoal
+Skowhegan
+Slip Point
+Smith Island
+Smith Point
+Soldiers Summit
+Sombrero Key
+Soo Locks
+South Bass Island
+South Fox Island
+South Holston
+South Pass
+Southwest Ledge
+Southwest Pass
+Southwest Reef
+Spectacle Reef
+Split Rock
+Spokane
+Squantum
+Squaw Valley
+St. George Reef
+St. James
+St. Johns River
+St. Joseph
+St. Joseph Point
+St. Lawrence Seaway
+St. Marks
+St. Martin Island
+St. Marys Falls Canal
+St. Simons
+Stage Harbor
+Stamford
+Stamford Harbor
+Stannard Rock
+Staten Island
+Stepping Stones
+Sterling
+Stingray Point
+Stony Point
+Straits of Florida
+Straitsmouth
+Stratford
+Stratford Point
+Stratford Shoal
+Sturgeon Bay
+Sturgeon Point
+Stuyvesant
+Suitland
+Sunken Rock
+Susquehanna
+Swampscott
+Tacoma
+Tangier Sound
+Tarpaulin Cove
+Tawas
+Tenants Harbor
+Tenpound Island
+Thimble Shoal
+Thomas Point Shoal
+Tillamook
+Tillamook Rock
+Timbalier
+Toledo Harbor
+Tompkinsville
+Tongue Point
+Topeka
+Torrance
+Tortugas Harbor
+Tree Point
+Trinidad Head
+Tucker Beach
+Tucson
+Turkey Creek
+Turkey Point
+Turn Point
+Tustin
+Twin River
+Twin River Point
+Two Harbors
+Two Rivers
+Two Sisters
+Tybee
+Tybee Island
+Tybee Knoll
+Uvalde
+Vallecito
+Vicksburg
+Virginia Capes
+Waackaack
+Wade Point
+Waikiki
+Warrior Rock
+Watauga
+Watch Hill
+Watertown
+Watts Bar
+Waugoshance
+West Bank
+West Branch
+West Chop
+West Point
+West Quoddy Head
+Westfield
+Whale Rock
+Whaleback
+Whipple Point
+White Pass
+White River
+White Sands
+White Shoal
+Whitefish Point
+Whitehead
+Whittier
+Wichita
+Wilkes-Barre
+Wilkinson Point
+Williamsburg
+Willow Run
+Wind Point
+Windmill Point
+Wings Neck
+Winter Harbor
+Winter Park
+Wolf Trap
+Woods Hole
+Wounded Knee
+Yakutat
+Yaquina Head
+Yerba Buena Island
+Yonkers
+York Spit
+Yosemite
+Yukon
+Yukon River
+Zaikof Point
+Zion
 
 Aachen
 Aalborg
@@ -1215,6 +1960,7 @@ Tossa de Mar
 Touraine
 Toussus-le-Noble
 Townsville
+Trapani
 Transylvania
 Trondheim
 Truro
@@ -1293,6 +2039,7 @@ Grottaglie
 Messina
 Otranto
 Padua
+Terrasse du Soleil
 Torino
 Toronto
 Aichi
@@ -1303,7 +2050,9 @@ Upernavik
 Chongqing
 Mukden
 Nanking
+Rauba Capeu
 Peiping
+Puerta del Sol
 Inchon
 Tarakan
 Nordland
@@ -1323,6 +2072,1293 @@ Zeebrygge
 Öland
 Åland
 Åbo
+Aar
+Abainville
+Accra
+Acrocorinth
+Acropolis
+Addis Abeba
+Adersbach
+Aiglemont
+Aigney le Duc
+Aigosthena
+Aita al-Shab
+Aitape
+Aix
+Akeno
+Akutan
+Albert
+Alcubierre
+Aldergrove
+Alexandria
+Alipore
+Alps
+Alster
+Amami Shima
+Amatal
+Amiens
+Amriyha
+Ancon
+Ancon Hill
+Ancre
+Andes
+Anegado Shoal
+Angkor
+Angkor Wat
+Anguilla Key
+Anshan
+Ansoncourt
+Antoing
+Aomori
+Aparri
+Appian Way
+Appledram
+Apra Harbor
+Aragon
+Arakan
+Arbroath
+Ardeatine Fosse
+Ardennes
+Arecibo
+Argonne
+Aritao
+Arkhangel
+Armentieres
+Arnsberg
+Arras
+Arromanches
+Asan Point
+Assens
+Assisi
+Atsugi
+Attlebridge
+Aube
+Aubervillers
+Auckland
+Auschwitz
+Auteuil
+Autun
+Avellino
+Aytre
+Azores
+Bad Aibling
+Baguio
+Baie des Anges
+Baku
+Balaton
+Balboa Heights
+Balikpapan
+Ballyhalbert
+Ballykelly
+Bamban
+Ban Dara
+Banak
+Baneasa
+Banika
+Bapaume
+Bar Sur Aube
+Baracoa
+Barceloneta
+Bardoneccio
+Bari
+Bas Obispo
+Basle
+Bassens
+Bastia
+Bastogne
+Bataan
+Bath
+Bay of Whales
+Bazenville
+Bazoches
+Beachy Head
+Beaucaillou
+Beaumaris
+Beaune
+Beaune-la-Rolande
+Beauvais
+Beckum
+Becordel-Fricourt
+Behren-Lubchin
+Belcourt
+Belgrade
+Belleau Wood
+Bellefontaine
+Belleville
+Bellevue
+Bendorf
+Beney
+Benghazi
+Bergen-Belsen
+Bering Sea
+Berlin-Moabit
+Berlin-Pankow
+Berlin-Spandau
+Berlin-Weißensee
+Bernburg
+Besalú
+Bescanó
+Bessiner Haken
+Betheniville
+Beverlo
+Biak
+Bialowies
+Biggin Hill
+Bikini
+Bikini Atoll
+Billy sous les Cotes
+Bilyj Kamin
+Binbrook
+Binh Thuy
+Binmaley
+Bir Marbott Pass
+Bircham Newton
+Birkhede
+Biskra
+Bitburg
+Bixschoote
+Blanes
+Blasewitz
+Blechhammer
+Bled
+Blida
+Bligny
+Boadella
+Boca Chica
+Boden
+Boesinghe
+Bogor
+Bohai
+Bohio
+Bois Belleau
+Bois de Bantheville
+Bois de Barricourt
+Bois de Belleau
+Bois de Bonvaux
+Bois de Boulogne
+Bois de Brieulles
+Bois de Chehemins
+Bois de Dommartin
+Bois de Fays
+Bois de Foret
+Bois de Malamont
+Bois de Malancourt
+Bois de Marcq
+Bois de Montfaucon
+Bois de Recicourt
+Bois de Tuileries
+Bois des Caurières
+Bois du Beuges
+Bolzano
+Boncourt
+Bonn
+Bonninghardt
+Borgo Fonari
+Borneo
+Boscombe Down
+Bou Grara
+Bou Saada
+Bouchy
+Bourges
+Bourgoin
+Bovington
+Boxted
+Brain-Sur-Authion
+Brandis
+Braunschweig
+Bremerhaven
+Brenta
+Brest-Litowsk
+Bricquebec
+Brindisi
+Brno
+Bruges
+Brun
+Brunnen
+Buchenwald
+Budaörs
+Budesheim
+Buka
+Bukhara
+Bukhan-san
+Bumpliz
+Burg
+Burgbrohl
+Butaritari
+Butgenbach
+Cabo de São Vicente
+Cadaqués
+Caen
+Calais
+Caldes de Estrac
+Calella de Palafrugell
+Calonge
+Calumpit
+Cam Ranh Bay
+Cambrai
+Cambridge
+Campobello
+Can Tho
+Cap de Cala Figuera
+Cap de Creus
+Cap de la Madeleine
+Cap Levy
+Cape Bojeador
+Cape Engano
+Cape Gloucester
+Cape Hallett
+Cape Helles
+Cape Melville
+Cape of Good Hope
+Cape of Sounion
+Cape Rojo
+Cape San Antonio
+Cape San Juan
+Cape Spartel
+Capdepera
+Capodichino
+Carisey
+Carpathians
+Casablanca
+Casar
+Casas Grandes
+Caserta
+Cassino
+Castel Benito
+Castellet
+Castle Archdale
+Castle Camps
+Cay Lobos
+Cephalonia
+Cerro de la Rovira
+Cerro Muriano
+Cervera
+Cervia
+Ceuta
+Chalons Sur Marne
+Chambery
+Chambois
+Chambord
+Chamonix
+Chamova
+Changtu
+Chapei
+Charleville
+Charpentry
+Chateau-Thierry
+Chateau Thierry
+Chelveston
+Cheppy
+Cherieres
+Chernavoda
+Cheverny
+Chełm
+Chiba
+Chichi Jima
+Chienmen
+Ching Chaun Kang
+Chioggia
+Chipilly Ridge
+Chipping Warden
+Chiriqui
+Chittagong
+Chivenor
+Chofu
+Chosin Reservoir
+Chu Lai
+Chua Thuan
+Chungking
+Churubusco
+Cienfuegos
+Cierges
+Cirey
+Cisterna
+Ciudad Trujillo
+Clastres
+Cochem
+Cocos Islands
+Colerne
+Colleville sur Mer
+Colmar
+Colombey Les Belles
+Colon
+Comiso
+Coningsby
+Corinth
+Corleone
+Corregidor
+Coulommiers
+Cour Cheverny
+Courcelles aux Bois
+Courchamps
+Coutances
+Crail
+Cristobal
+Crouy
+Cu Chi
+Cua Viet
+Culebra Cut
+Culebrita Island
+Culham
+Czarnkow
+Da Nang
+Da Nhim
+Dachau
+Dagua
+Dakar
+Dakeshi
+Dallachy
+Danube
+Davidstow Moore
+Deba
+Debden
+Deenethorpe
+Delville Wood
+Deopham Green
+Depapre
+Derna
+Diarbekir
+Dickweiler
+Diego Garcia
+Dien Bien Phu
+Dikili
+Dinard
+Dixmude
+Dnepr
+Dnjestr
+Dobodura
+Dodoma
+Domažlice
+Dong Ha
+Dong Lac
+Dongermain
+Dorsetshire
+Douaumont
+Draycy
+Drem
+Dulag
+Dum Dum
+Duren
+Dwina
+Dybbøl
+Dyce
+Eagle Farm
+East Wretham
+Eastleigh
+Echternach
+Eddystone
+Ede
+Ehrenbreitstein
+Eichstatt
+El Adem
+El Aouina
+El Ballah
+El Daba
+El Kabrit
+Elbassan
+Elbe
+Elbing
+Emirau
+Empress Augusta Bay
+Empuriabrava
+Enewetak
+Eniwetok
+Enoshima
+Epinal
+Epinay
+Esch
+Espiritu Santo
+Espot
+Etaples
+Etchmiadzin
+Euchelbach
+Fala
+Falaise
+Fano
+Farallon Sucio
+Favarix
+Feltwell
+Fere
+Ferrara
+Figueres
+Firenzuola
+Fismes
+Flaçà
+Flers
+Fleury
+Fleville
+Florennes
+Florida Blanca
+Flossberg
+Flushing
+Foggia
+Foix River
+Fontainebleau
+Formetera
+Fornells
+Foxwarren
+Francorchamps
+Frederiksberg
+Fricourt
+Friston
+Fritzlar
+Frösö
+Fujiyama
+Funafuti
+Furth
+Fushun
+Föllinge
+Gabes
+Galicia
+Gamboa
+Gardelegen
+Gatow
+Gatun
+Geilenkirchen
+Geising
+Gerardmer
+Geruma Shima
+Gevåg
+Gilze Rijen
+Gizeh
+Gizo Island
+Goascoran
+Golfe Juan
+Gona
+Gosforth
+Gosport
+Gouzeaucourt
+Grafenwoehr
+Grafton Underwood
+Grajewo
+Grandpre
+Gransden Lodge
+Gravesend
+Green Island
+Grevenmascher
+Gros Gerau
+Gross Schiemanen
+Grosseto
+Guajataca River
+Guanica
+Guantanamo
+Guantanamo Bay
+Guindalos
+Gulf of Bohai
+Gurissu
+Gusen
+Gyenesdiás
+Gäddede
+Habbaniyah
+Hablainville
+Haderslev
+Hagaru-ri
+Hagenbach
+Hakata
+Hakodate
+Haktong-Ni
+Hal Far
+Hamamatsu
+Hamel
+Hammarforsen
+Han River
+Haneda
+Hankou
+Hankow
+Harbin
+Harnes
+Harricourt
+Harrowbeer
+Harwich
+Hatston
+Hatzerim
+Haute Marne
+Haute Savoie
+Hawkinge
+Hebron
+Heidelberg
+Helles
+Henri-Chapelle
+Herdla
+Hergla
+Hertenstein
+Hethel
+Hetzerath
+High Tauern
+Himalayas
+Hissmofors
+Hohe First
+Hohenfels
+Hohr
+Hokota
+Hollandia
+Honsfeld
+Horham
+Horodok
+Horserød
+Horsham St. Faith
+Hotting
+Houffalize
+Hsiaotung
+Hulutao
+Humes
+Hunsdon
+Huppy
+Hurtgen
+Husseren-Wesserling
+Hwachon-Yanggu
+Hwangt'o Do Island
+Ichi Banare
+Idku
+Ie Shima
+Iheya Shima
+Immola
+Intramuros
+Irún
+Isinomaki
+Isla de Lazareto
+Isla Grande
+Ismailia
+Issoncourt
+Itami
+Itoman
+Ivoiry
+Iwakuni
+Jacobstadt
+Jakarta
+Jebel Hamarin
+Jena-Zwätzen
+Jericho
+Jever
+Jobos Harbor
+Jolo
+Jouy-Sur-Morin
+Jura
+Jutland
+Juvisy
+Kadena
+Kagamigahara
+Kagerplassen
+Kai Tak
+Kaima
+Kajartalik
+Kaldarnes
+Kallang
+Kamakura
+Kasamigaura
+Kasfareet
+Kashima
+Kassel
+Kasumigaura
+Katyn Forest
+Keijo
+Kelenföld
+Kemmel
+Kempo
+Kengun
+Kerama Retto
+Kharkov
+Khe Sanh
+Khlong Ple
+Kholm
+Kiel
+Kilchoman
+Kimpo
+Kinchow
+Kings Cliffe
+Kingsbridge
+Kirin
+Kirton in Lindsey
+Kiryat Shmone
+Kisarazu
+Kiyosu
+Klampenborg
+Klingenberg
+Kluane Lake
+Knarrholmen
+Knightsbridge
+Kohat
+Kolombangara
+Korat
+Korsør
+Kota Bharu
+Koto-Ri
+Krasnobrodzkie
+Kratovo
+Kreckwitzer Höhen
+Krefeld
+Krend
+Kreta
+Kriebstein
+Kristiansand
+Kronberg
+Krångede
+Kungyuan
+Kunming
+Kure
+Kurobe Gorge
+Küstrin-Neustadt
+La Bassee Canal
+La Boisselle
+La Coucourde
+La Fere
+La Haye Du Puits
+La Jonchere
+La Panne
+La Pobla de Segur
+La Turbie
+Labuan
+Lac Cazaux
+Lae
+Lagens
+Lagesse
+Lake Balaton
+Lakunai
+Lambezellec
+Langemarck
+Langemark
+Langham
+Laon
+Lauta
+Lauterfingen
+Le Begot
+Le Boucau
+Le Bourget
+Le Creusot
+Le Croisic
+Le Culot
+Le Fresne-Camilly
+Le Menil
+Le Touquet
+Le Valdahon
+Lechfeld
+Ledo Road
+Lee-on-Solent
+Leeuwarden
+Legaspi
+Leghorn
+LeHavre
+Lehnmühle
+Leiden
+Leipheim
+Leopoldsburg
+Les Baux-de-Provence
+Les Dunes de Madeleine
+Les Eparges
+Les Mureaux
+Les Rouges-Eaux
+Lesina
+Lesquin
+Leuchars
+Leuna
+Leval
+Leysele
+Leyte
+Leyte Gulf
+Liege
+Ligescourt
+Ligneuville
+Lilienstein
+Limberg
+Limoges
+Lingayen
+Lipa
+Little America
+Little Belt
+Llafranc
+Llanishen
+Llançà
+Llobregat
+Loma de Mazo
+Lombartzyde
+Longues sur Mer
+Lourdes
+Louvain
+Lubeck
+Lublin
+Ludford Magna
+Ludwigslust
+Lugnvik
+Lunga
+Luninetz
+Lympne
+Lyons
+Lübbenau
+Madang
+Maison Blanche
+Majdanek
+Majuro Atoll
+Makassar Strait
+Makin
+Makin Atoll
+Malancourt
+Malines
+Malla
+Malmedy
+Malter
+Manching
+Mandalay
+Manila Bay
+Mantes-Gassicourt
+Marles
+Marne
+Marnes-La-Coquette
+Marseilles
+Martuba
+Masada
+Maselskaya
+Massevaux
+Mateur
+Matlaske
+Matsuyama
+Mauthausen
+Mayaguez
+Mayen
+Mayence
+McMurdo Sound
+Medenine
+Megève
+Meiktila
+Meiringen
+Melen
+Melsbroek
+Membury
+Menin Road
+Menil-la-Tour
+Menjil
+Mer de Glace
+Merseburg
+Merston
+Mesnil
+Mesves
+Mettau Metuje
+Metz
+Meuse
+Mezy
+Middle Wallop
+Midway
+Milazzo
+Mille Atoll
+Mindoro
+Miniac-Morvan
+Miraflores
+Mittelweida
+Miyajima
+Mizutani
+Modena
+Moerdijk
+Mogilev
+Mokmer
+Molins de Rei
+Molliens
+Mombacho
+Mont Saint-Michel
+Mont Valerien
+Montabaur
+Montaragó
+Monte Carlo
+Monte Cassino
+Monte Lirio
+Montecatini
+Montecorvino
+Montevideo
+Montfaucon
+Montigny Sur Aube
+Montjuic
+Montjuïc
+Montsec
+Montélimar
+Moritzburg
+Morotai
+Moscheim
+Mount Farm
+Mourmelon
+Moyencourt
+Mt. Fujiyama
+Muden
+Muenster
+Muhldorf
+Mulde
+Mulhouse
+Munda Point
+Munster
+Murmansk
+Muskwa River
+Nadvoitsa
+Nadzab
+Nandaime
+Nanning
+Nanumea
+Narimasu
+Narsarsuaq
+Nea Anhiles
+Nessebar
+Nettuno
+Neufchapel
+Neufchateau
+Neufelden
+Neukuhren
+Neumunster
+Neuve Chapelle
+Neuwerk
+Neuwied
+Nevers
+Nigde
+Nile
+Ninji Gora
+Nis
+Nissan Atoll
+Nordhausen
+Nordholz
+Northolt
+Noyen
+Nuernberg
+Nurnberg
+Näsaforsen
+Oakington
+Obertraubling
+Oberwinter
+Ocotal
+Odiham
+Oise
+Old Buckenham
+Omura
+Onyar
+Ormoc
+Orote Point
+Orry-La-Ville
+Osaka
+Ota
+Oye-Plage
+Pachino
+Paignton
+Paimpol
+Palafrugell
+Palamos
+Palawan
+Palembang
+Palma
+Panama Canal
+Parnu
+Passariano
+Pauillac
+Pedro Miguel
+Peenemunde
+Peipiao
+Peleliu
+Pembrey
+Pembroke Dock
+Penang
+Periers
+Pesaro
+Peshawar
+Petershagen
+Petrograd
+Petropavlovsk
+Pfaffenstein
+Phan Thiet
+Pic du Ger
+Pic du Jer
+Picardy
+Pietramala
+Pitomnik
+Piva
+Planoles
+Pleiku
+Pleinchamp
+Plivot
+Ploesti
+Ploiești
+Plouharnel
+Po
+Pohang
+Point Borinquen
+Point Figuras
+Point Jiguero
+Point Mulas
+Point Tuna
+Pointe du Hoc
+Pointe du Raz
+Polebrook
+Poltava
+Pomigliano
+Pommern
+Pompeii
+Ponape
+Ponce De Leon
+Pont-sur-Meuse
+Porac
+Port Ferro
+Port Lyautey
+Port Said
+Port San Juan
+Port-de-Bouc
+Portbou
+Porto Bello
+Poteau
+Potsdam
+Pozieres
+Premont
+Prestwich
+Prestwick
+Prio River
+Prum
+Przemysl
+Puigcerdà
+Putanges
+Puteaux
+Pyongyang
+Pyrenees
+Qasaba
+Quang Tri
+Quebec
+Qui Nhon
+Quilali
+Quilmes
+Quinto
+Rabaul
+Rachecourt
+Radebeul
+Ramscappelle
+Ramstein
+Rangoon
+Rattlesden
+Ravensbruck
+Ravensbrück
+Rayak
+Rechlin
+Reggio Emilia
+Reims
+Remagen
+Remenauville
+Rennes
+Rheims
+Rhine
+Riga
+Ringway
+Rio Barranca
+Rio Ceniza
+Rio Hato
+Rio Nazas
+Rio Purires
+Rio Seco
+Ripoll
+Ripollès
+Rittershofen
+Rivenhall
+Rochesson
+Roetgen
+Roi Namur
+Romagne
+Rostov
+Rostov-on-Don
+Rotangy
+Rouen
+Rouvaniemi
+Rouvillers
+Rouvroy
+Roye
+Rörström
+Sabadell
+Sable Sur Sarthe
+Sachsenhausen
+Sadong
+Safi
+Sahara
+Saidor
+Saigon
+Saigon River
+Sailly La Bourse
+Sailly-Laurette
+Saint Cyr
+Saint Fromond
+Saint Jean de Daye
+Saint Laurent Sur Mer
+Saint Marcouf
+Saint Nazaire
+Saint Remy
+Saint-Omer-Arques
+Sainte Marie
+Saipan
+Salamaua
+Salerno
+Salina
+Samar
+San Bernardino
+San Domenico
+San Fernando
+San Giovanni
+San Marcos
+San Pancrazio
+San Romano de Sau
+San Sebastiano al Vesuvio
+Sancti Spiritus
+Sanssouci
+Sant Feliu de Guíxols
+Santa Cruz Islands
+Santa Llogaia
+Santa Marinella
+Santa Rita
+Santa Ysabel
+Sardinia
+Sarikamish
+Sarisbury
+Sarmi
+Sarthe
+Sassnitz
+Saupigny
+Savoie
+Saxony
+Sayn
+Scampton
+Scapa Flow
+Schaulen
+Scheikowa
+Schiermonikoog
+Schifflange
+Schleswig
+Schouten Island
+Schweinfurt
+Sciacca
+Seddul-Bahr
+Seething
+Segendorf
+Segi Point
+Seine
+Seletar
+Senaga Shima
+Sentani
+Sergiev Posad
+Serres
+Sersån
+Shannon
+Shannon Island
+Shatalovo
+Shenyang
+Shikishima
+Shipdham
+Shuri
+Siboney
+Sidi Magrum
+Sidi Rezegh
+Silesia
+Sin Do Island
+Sinzig
+Sitges
+Sittard
+Slapton Sands
+Soesterberg
+Sofia
+Solombola
+Solomons
+Sophienthal
+Sopron
+Soroka
+Souk el Arba
+Souk el Khemis
+Sounion
+South Pole
+Sparta
+Speke
+Spileno
+Spinazzola
+Split
+Spontin
+Spree
+Spreewald
+St Eval
+St Lo
+St Pois
+St. Denis
+St. Dizier
+St. Etienne
+St. Hubert
+St. Mammes
+St. Maurice
+St. Maxime
+St. Mihiel
+St. Saveur
+St. Sever Calvados
+St. Vith
+Stara Bychow
+Stara-Russa
+Stavelot
+Stendal
+Stolberg
+Stoney Cross
+Stradishall
+Straits of Gibraltar
+Strassbourg
+Stromboli
+Strubby
+Stugun
+Stuttgart-Bad Cannstatt
+Suez
+Suez Canal
+Sungari River
+Suresnes
+Survilliers
+Susa
+Susqueda
+Swinderby
+Swinemunde
+Syerston
+Sylt
+Syr-Darja
+Szrenica
+Taejon
+Taglimento
+Tahure
+Tainan
+Talasea
+Tan Son Nhut
+Tangmere
+Tapel
+Tatayama
+Tauern
+Tehran
+Tel Hashomer
+Telergma
+Tempelhof
+Tempsford
+Tengah
+Ter
+Terramar
+Terrassa
+Teruel
+Thames
+Theresienstadt
+Thiaucourt
+Thiepval
+Thorpe Abbotts
+Thruxton
+Thule
+Tian Shan
+Tientsin
+Tilshead
+Tinian
+Tipitapa
+Torgau
+Torino Di Sangro
+Toro Point
+Torokina
+Toruń
+Tottenham
+Toul
+Toulouse
+Tours
+Toussus le Noble
+Trapani
+Trensum
+Treves
+Trevi
+Trier
+Truk
+Truk Atoll
+Tuileries
+Tulagi
+Tulagi Harbor
+Tullin
+Turnitz
+Tuy Hoa
+Twatt
+Twenthe
+Twer Oblast
+Tännäs Kyrkby
+Ulithi
+Unzen
+Ust Padenga
+Utsunomiya
+Vacqueville
+Vaenga
+Vaga River
+Vallcarca
+Vallendar
+Valmy
+Valmåsen
+Variscourt
+Vaucelles
+Vazuza
+Vella Lavella
+Venlo
+Verdun
+Versailles
+Vesuvius
+Vidreres
+Vielsalm
+Vieques
+Villacoublay
+Villequier
+Villers Cotterets
+Villers-Saint-Christophe
+Villers-Sur-Meuse
+Vincennes
+Vistula
+Vitry-en-Artois
+Vittel
+Vnukovo
+Vo Dat
+Vogelsang
+Volkhov
+Volo
+Vologda
+Volterra
+Vosges
+Vroenhoven
+Vunakanau
+Vung Tau
+Waddington
+Wady Surar
+Wakde
+Wake Island
+Walchensee
+Wald
+Warmwell
+Watten
+Wattisham
+Weihsien
+Weisweiler
+Wesel
+West Ham
+Westewitz
+Westminster
+Wewak
+Weybridge
+Whenuapai
+Wiesbaden
+Wiltz
+Winchester
+Wittering
+Wittlich
+Wlochy
+Wolchow
+Woolwich
+Woosung
+Worthy Down
+Wämöparken
+Wämöviken
+Wöbbelin
+Yalta
+Yelahanka
+Yellow River
+Yenangyaung
+Yentai
+Yeovilton
+Yokohama
+Yokota
+Yonabaru
+Yonne
+Yontan
+Youks Les Bains
+Yser
+Zagorsk
+Zaikof Point
+Zanzibar
+Zerbst
+Zinswiller
+Zschornewitz
+Zugspitze
+Zuylen
 
 Afghan
 African
