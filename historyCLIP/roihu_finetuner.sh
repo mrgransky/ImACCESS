@@ -259,8 +259,8 @@ BATCH_SIZES=(16 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 25)
 SEED="${SEED:-42}"
 
-# LRS=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06) # orig
-LRS=(5.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+LRS=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06) # orig
+# LRS=(5.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 EPOCHS=(100 100 150 150 150)
 
@@ -278,12 +278,12 @@ for rank in "${LORA_RANKS[@]}"; do
 	LORA_ALPHAS+=("$(( rank * 2 )).0")
 done
 LORA_DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
-# LORA_PLUS_LAMBDAS=(4.0 16.0 16.0 16.0 16.0)  # only used by lora_plus
 # LoRA+ lambda: ratio of B/A learning rates.
 # Per the LoRA+ paper (Hayou et al. 2024), effective range is ~16–256;
 # not strongly tied to dataset size — kept constant across datasets here,
 # since the same architectures are used for all datasets.
-LORA_PLUS_LAMBDAS=(8 16 16 16 16)
+LORA_PLUS_LAMBDAS=(4.0 16.0 16.0 16.0 16.0)  # orig
+# LORA_PLUS_LAMBDAS=(8 16 16 16 16)
 
 # ── Progressive fine-tuning parameters ──────────────────────────────────
 # Controls the layer-by-layer unfreezing schedule used in "full" strategy
