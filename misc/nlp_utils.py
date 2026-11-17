@@ -1986,6 +1986,10 @@ def _post_process_(
 			clean_toks = [w.strip(",. ") for w in tokens if w.strip(",. ")]
 			if len(clean_toks) >= 2 and all(is_in_geo(tok) for tok in clean_toks):
 				return True
+			if '/' in t and not any(ch.isdigit() for ch in t):
+				slash_parts = [p.strip(",. ") for p in t.split('/') if p.strip(",. ")]
+				if len(slash_parts) >= 2 and all(is_geo_location(p) for p in slash_parts):
+					return True
 			return False
 
 		# 1. Existing Stopwords check
