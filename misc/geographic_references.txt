@@ -1301,6 +1301,8 @@ Split Rock
 Spokane
 Squantum
 Squaw Valley
+St. Giles
+St. Gilles
 St. George Reef
 St. James
 St. Johns River
@@ -3069,6 +3071,7 @@ Saidor
 Saigon
 Saigon River
 Sailly La Bourse
+Saint-Gilles
 Sailly-Laurette
 Saint Cyr
 Saint Fromond
