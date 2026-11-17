@@ -1399,24 +1399,24 @@ def _post_process_(
 		if len(words) == 1 and uppercase_ratio == 1.0 and len(label) <= min_meaningful_word_length:
 				if label.lower() in PROTECTED_PLURALS:
 						if verbose:
-								print(f"\t[CASE PRESERVED] {repr(label):<55} protected plural")
+								print(f"\t[CASE PRESERVED] {repr(label):<55}protected plural")
 						return False
 				if verbose:
-						print(f"\t[SKIPPED CASE] {repr(label):<50} unlisted acronym (len={len(label)} <= {min_meaningful_word_length})")
+						print(f"\t[SKIPPED CASE] {repr(label):<50}unlisted acronym (len={len(label)} <= {min_meaningful_word_length})")
 				return True
 		
 		# 5. MULTI-WORD / PARTIAL HIGH UPPERCASE RATIO
 		if uppercase_ratio > uppercase_bound_thresh and len(label) <= min_meaningful_word_length:
 			if verbose:
-				print(f"\t[SKIPPED CASE] {repr(label):<50} uppercase_ratio={uppercase_ratio:.3f} > {uppercase_bound_thresh} and len={len(label) }<= {min_meaningful_word_length}")
+				print(f"\t[SKIPPED CASE] {repr(label):<50}uppercase_ratio={uppercase_ratio:.3f} > {uppercase_bound_thresh} and len={len(label) }<= {min_meaningful_word_length}")
 			return True
 
 		# 6. PASSED
 		if verbose:
 			if len(label) > min_meaningful_word_length:
-				print(f"\t[CASE PASSED] {repr(label):<55} len={len(label)} > {min_meaningful_word_length}")
+				print(f"\t[CASE PASSED] {repr(label):<55}len={len(label)} > {min_meaningful_word_length}")
 			else:
-				print(f"\t[CASE PASSED] {repr(label):<55} ratio={uppercase_ratio:.3f} <= {uppercase_bound_thresh}")
+				print(f"\t[CASE PASSED] {repr(label):<55}ratio={uppercase_ratio:.3f} <= {uppercase_bound_thresh}")
 		
 		return False
 
@@ -2771,7 +2771,7 @@ def _post_process_(
 				)
 				if geo_result is not None and geo_result["has_strong_geo"]:
 					if verbose:
-						print(f"\t[SKIPPED GPE/LOC/NORP] {repr(ner_input):<55} {geo_result}")
+						print(f"\t[SKIPPED] {ner_input!r:<55}{geo_result} (GPE/LOC/NORP)")
 					continue
 
 			if apply_lemmatization:
@@ -2782,12 +2782,12 @@ def _post_process_(
 			is_short_designation = any(c.isdigit() for c in lemma) and MILITARY_DESIGNATION_RE.search(lemma)
 			if len(lemma) < min_kw_ch_length and not is_short_designation:
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} (len={len(lemma)} < {min_kw_ch_length})")
+					print(f"\t[SKIPPED] {lemma!r:<55}(len={len(lemma)} < {min_kw_ch_length})")
 				continue
 
 			if len(lemma.split()) > max_kw_word_length:
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} (len={len(lemma.split())} > {max_kw_word_length})")
+					print(f"\t[SKIPPED] {lemma!r:<55}(len={len(lemma.split())} > {max_kw_word_length})")
 				continue
 
 			if should_skip_by_case(
@@ -2799,7 +2799,7 @@ def _post_process_(
 
 			if is_phrasal_verb(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} phrasal verb")
+					print(f"\t[SKIPPED] {lemma!r:<55}phrasal verb")
 				continue
 
 			if is_stopword(phrase=lemma, verbose=verbose):
@@ -2808,39 +2808,39 @@ def _post_process_(
 			# Exclude pure color descriptors
 			if is_color_descriptor(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} pure color descriptor")
+					print(f"\t[SKIPPED] {lemma!r:<55}pure color descriptor")
 				continue
 
 			if any(w in HONORIFICS for w in lemma.lower().split()):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} honorific")
+					print(f"\t[SKIPPED] {lemma!r:<55}honorific")
 				continue
 
 			# Exclude "black and white" specifically
 			if lemma.lower() in IMAGE_DESCRIPTORS:
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} image descriptor")
+					print(f"\t[SKIPPED] {lemma!r:<55}image descriptor")
 				continue
 
 			if lemma.lower() in ORDINALS or _WORD_ORDINAL_RE.match(lemma.strip()):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} ordinal")
+					print(f"\t[SKIPPED] {lemma!r:<55}ordinal")
 				continue
 
 			if should_filter_label(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} generic label")
+					print(f"\t[SKIPPED] {lemma!r:<55}generic label")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
 			if re.match(r"^No\.\s\w+$", lemma, re.IGNORECASE):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} Only No. NNNNN")
+					print(f"\t[SKIPPED] {lemma!r:<55}Only No. NNNNN")
 				continue
 
 			if METADATA_DIMENSION_RE.match(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} dimension/measurement")
+					print(f"\t[SKIPPED] {lemma!r:<55}dimension/measurement")
 				continue
 
 			lemma_key = lemma.lower().strip()
@@ -2855,7 +2855,7 @@ def _post_process_(
 					clean_dict_per_sample[lemma_key] = lemma
 				else:
 					if verbose:
-						print(f"\t[SKIPPED] {repr(lemma):<55} duplicate of {repr(existing)}")
+						print(f"\t[SKIPPED] {lemma!r:<55}duplicate of {repr(existing)}")
 				continue
 
 			# SINGULAR / PLURAL WITHIN-SAMPLE COLLAPSING
@@ -2871,7 +2871,7 @@ def _post_process_(
 				singular_key = lemma_key[:-1]
 				if singular_key in clean_dict_per_sample:
 					if verbose:
-						print(f"\t[SKIPPED] {repr(lemma):<55} plural duplicate of {repr(clean_dict_per_sample[singular_key])}")
+						print(f"\t[SKIPPED] {lemma!r:<55}plural duplicate of {repr(clean_dict_per_sample[singular_key])}")
 					continue
 
 			# 2B: Singular arrives, but plural was stored FIRST 
