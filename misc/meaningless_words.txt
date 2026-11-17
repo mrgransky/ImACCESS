@@ -813,13 +813,6 @@ upon
 ups
 upwards
 upstream
-use
-used
-useful
-usefully
-usefulness
-uses
-using
 usually
 uucp
 value
@@ -1548,6 +1541,7 @@ Francis P. Matthews
 Francis P. Whitehair
 Francis Pierce
 Francis Whitehair
+Francisco Coloma Gallegos
 Francisco Franco
 Francisco Gutiérrez Cambras
 Frank A. Leamy
@@ -2361,3 +2355,4 @@ Xavier Cugat
 Yasuhiro Nakasone
 Yong-tae Pyon
 Zelda Parks
+St. Feliu de Pallarols

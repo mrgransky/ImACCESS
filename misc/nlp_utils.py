@@ -919,8 +919,10 @@ def _post_process_(
 	ALLOWED_SINGLE_LETTERS = FULL_ENGLISH_ALPHABET
 
 	HONORIFICS = {
-		"mr", "mr.",
-		"mrs", "mrs.",
+		"mr", 
+		"mr.",
+		"mrs", 
+		"mrs.",
 		"ms",
 		"miss",
 		"dr", "dr.", "d.r.",
@@ -931,10 +933,10 @@ def _post_process_(
 		"sultan",
 		"emir",
 		'czar',
-		# "prince",
-		# "princess",
-		# "prins",
-		# "king",
+		"prince",
+		"princess",
+		"prins",
+		"king",
 		# "queen",
 		"lord",
 		"madam",
@@ -942,7 +944,8 @@ def _post_process_(
 		"madame",
 		'agha',
 		'sheikh',
-		'maharaja', 'maharani', 
+		'maharaja', 
+		'maharani', 
 		'mughal',
 	}
 
@@ -965,7 +968,10 @@ def _post_process_(
 		'frank',
 		'holger',
 		'john',
-		'braden', 'frank', 'jake', 'jonah',
+		'braden',
+		'francisco',
+		'frank', 
+		'jake', 'jonah',
 		'natanya', 'nathans', 'nevin', 'thio', 
 		'tiffany', 'tiffany',
 		'riker',
@@ -1325,7 +1331,7 @@ def _post_process_(
 	def should_skip_by_case(
 		label: str,
 		uppercase_bound_thresh: float = 0.75,
-		min_meaningful_word_length: int = 5,
+		min_meaningful_word_length: int = 4,
 		verbose: bool = False,
 	) -> bool:
 		"""
@@ -1397,13 +1403,13 @@ def _post_process_(
 
 		# 4. SINGLE-WORD ALL-CAPS CHECK
 		if len(words) == 1 and uppercase_ratio == 1.0 and len(label) <= min_meaningful_word_length:
-				if label.lower() in PROTECTED_PLURALS:
-						if verbose:
-								print(f"\t[CASE PRESERVED] {repr(label):<55}protected plural")
-						return False
+			if label.lower() in PROTECTED_PLURALS:
 				if verbose:
-						print(f"\t[SKIPPED CASE] {repr(label):<50}unlisted acronym (len={len(label)} <= {min_meaningful_word_length})")
-				return True
+					print(f"\t[CASE PRESERVED] {repr(label):<55}protected plural")
+				return False
+			if verbose:
+				print(f"\t[SKIPPED CASE] {repr(label):<50}unlisted acronym (len={len(label)} <= {min_meaningful_word_length})")
+			return True
 		
 		# 5. MULTI-WORD / PARTIAL HIGH UPPERCASE RATIO
 		if uppercase_ratio > uppercase_bound_thresh and len(label) <= min_meaningful_word_length:
@@ -1445,7 +1451,7 @@ def _post_process_(
 			all_generic = (
 				GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
 				GENERIC_TECH_WORDS | GENERIC_METADATA_WORDS |
-				TIME_UNITS  # ◄── [ADD HERE]: drops standalone "year", "months", "days"
+				TIME_UNITS
 			)
 			return word in all_generic
 		
@@ -1977,6 +1983,11 @@ def _post_process_(
 		if not words:
 			return False
 
+		# Ship designations (e.g., 'U.S.S. Missouri', 'U.S.S. North Carolina', 'HMS Hood', 'S.S. Normandie')
+		# are named vessels, not geographic references (while 'U.S.S.R.' has no space and is still filtered).
+		if SHIP_PREFIXES.match(phrase_lower):
+			return False
+
 		# Helper: checks if term or its morphological singular is in GEOGRAPHIC_REFERENCES
 		def is_in_geo(term: str) -> bool:
 			if term in GEOGRAPHIC_REFERENCES or term in US_STATE_CODES:
@@ -1985,8 +1996,8 @@ def _post_process_(
 				return True
 			if term.startswith('st. ') and ('st ' + term[4:]) in GEOGRAPHIC_REFERENCES:
 				return True
-			# If plural, test morphological singular candidates against GEOGRAPHIC_REFERENCES
-			if term.endswith('s') and not term.endswith('ss'):
+			# If plural (avoid dotted acronyms/abbreviations like 'u.s.s' -> 'u.s.'), test morphological singulars
+			if '.' not in term and len(term) > 3 and term.endswith('s') and not term.endswith('ss'):
 				if term[:-1] in GEOGRAPHIC_REFERENCES:  # 'americans' -> 'american', 'russians' -> 'russian'
 					return True
 				if term.endswith('ies') and len(term) > 4 and (term[:-3] + 'y') in GEOGRAPHIC_REFERENCES:
@@ -2811,7 +2822,8 @@ def _post_process_(
 					print(f"\t[SKIPPED] {lemma!r:<55}pure color descriptor")
 				continue
 
-			if any(w in HONORIFICS for w in lemma.lower().split()):
+			lemma_tokens = lemma.lower().split()
+			if lemma_tokens and lemma_tokens[0] in HONORIFICS:
 				if verbose:
 					print(f"\t[SKIPPED] {lemma!r:<55}honorific")
 				continue

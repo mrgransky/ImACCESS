@@ -281,6 +281,8 @@ Saint Vincent and the Grenadines
 St. Avold
 St. Augustine
 St. Croix
+St. Feliu
+St. Feliu de Pallerols
 St. Fongest
 St. Justina
 St. Juvin
@@ -1980,6 +1982,7 @@ Vanport
 Varennes
 Vaudesincourt
 Vaux
+Venezia
 Venice
 Vera Cruz
 Verneuil
