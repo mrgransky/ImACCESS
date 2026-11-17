@@ -539,7 +539,13 @@ def _post_process_(
 	}
 
 	GENERIC_PEOPLE_WORDS = {
-		"people", "person", "individual", "individuals",
+		"people", "person", "individual",
+	}
+
+	# People nouns dropped ONLY when quantified by a leading number ("105 officers", "three men", "four soldiers"),
+	# while preserved as standalone/descriptive visual keywords ("soldiers", "wounded soldiers", "refugee children").
+	QUANTIFIED_PEOPLE_WORDS = GENERIC_PEOPLE_WORDS | {
+		"individuals",
 		"man", "men", "woman", "women", "child", "children", "boy", "boys", "girl", "girls",
 		"officer", "officers", "soldier", "soldiers", "troop", "troops",
 		"sailor", "sailors", "marine", "marines", "airman", "airmen",
@@ -1235,9 +1241,9 @@ def _post_process_(
 
 	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations, photo collections, exhibits, events/tournaments, and sectors/zones:
 	GENERIC_ECHELON_RE = re.compile(
-		rf'^(?:{_NATIONALITY_MODIFIERS}\s+)?(?:'
-		rf'{_ORDINAL_PATTERN}[- ]*(?:{_NATIONALITY_MODIFIERS}\s+)?(?:{_ECHELON_PATTERN})|'
-		rf'(?:(?:no\.?\s*)?\d{{1,4}}(?:st|nd|rd|th|d)?\.?)[- ]*(?:{_NATIONALITY_MODIFIERS}\s+)?(?:{_ECHELON_PATTERN})|'
+		rf'^(?!first\s+aid\b)(?:{_NATIONALITY_MODIFIERS}\s+)?(?:'
+		rf'{_ORDINAL_PATTERN}[- ]+(?:{_NATIONALITY_MODIFIERS}\s+)?(?:{_ECHELON_PATTERN})|'
+		rf'(?:(?:no\.?\s*)?\d{{1,4}}(?:st|nd|rd|th|d)?\.?)[- ]+(?:{_NATIONALITY_MODIFIERS}\s+)?(?:{_ECHELON_PATTERN})|'
 		rf'(?:squadron|sqdn\.?|sqn\.?)\s+\d{{1,4}}|'
 		rf'\d{{1,4}}(?:st|nd|rd|th|d)\.?[- ]*(?:[A-Za-z]\.?){{2,6}}'
 		rf'){_SUFFIX}$',
@@ -1261,7 +1267,7 @@ def _post_process_(
 		# 1b. Quantified generic headcounts or time units ("105 officers", "3 men", "20 soldiers", "10 days") -> DROP
 		parts = label.strip().split()
 		if len(parts) == 2 and (parts[0].isdigit() or parts[0].lower() in NUMBER_WORDS):
-			if parts[1].lower() in (GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | TIME_UNITS):
+			if parts[1].lower() in (QUANTIFIED_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | TIME_UNITS):
 				return False
 
 		# 2. Date expressions ("November 1962", "Spring 1943", "1940s", "circa 1944") -> DROP
@@ -1458,9 +1464,9 @@ def _post_process_(
 				if second_word in TIME_UNITS:
 					return True
 
-				# Filter quantified people ("three men", "two women")
+				# Filter quantified people ("three men", "two women", "four soldiers")
 				is_generic_person = (
-					second_word in GENERIC_PEOPLE_WORDS 
+					second_word in QUANTIFIED_PEOPLE_WORDS 
 					or second_word in GENERIC_FAMILY_WORDS
 				)
 				if is_generic_person:
@@ -1703,10 +1709,25 @@ def _post_process_(
 			if ent.start == 0 and ent.end == len(doc)
 		]
 
-		is_full_span = bool(full_span_entities)
+		geo_token_indices = {
+			idx
+			for ent in direct_spans
+			for idx in range(ent.start, ent.end)
+		}
+		content_token_indices = {
+			tok.i
+			for tok in doc
+			if not tok.is_punct and not tok.is_space and tok.lower_ not in {"and", "or", "&"}
+		}
+
+		is_full_span = bool(full_span_entities) or (
+			bool(direct_spans)
+			and bool(content_token_indices)
+			and content_token_indices.issubset(geo_token_indices)
+		)
 
 		if verbose and is_full_span:
-			for ent in full_span_entities:
+			for ent in (full_span_entities or direct_spans):
 				print(f"\t[spaCy NER] FULL-SPAN GEO →  {ent.text!r} ({ent.label_})")
 
 		# ==================================================================
@@ -1791,8 +1812,10 @@ def _post_process_(
 		# ==================================================================
 		# 9b. Domain-aware override for known full-span false positives
 		# ==================================================================
+		is_fp_override = False
 		if has_strong_geo and text.lower() in FULL_SPAN_FALSE_POSITIVES:
 			has_strong_geo = False
+			is_fp_override = True
 			reason = "full-span false positive (domain exception)"
 			if verbose:
 				print(
@@ -1803,7 +1826,9 @@ def _post_process_(
 		# ==================================================================
 		# 10. REASON
 		# ==================================================================
-		if is_full_span:
+		if is_fp_override:
+			pass
+		elif is_full_span:
 			reason = "full-span geo"
 		elif is_single_word and direct_spans:
 			reason = "single-word geo/NORP"
@@ -1956,6 +1981,10 @@ def _post_process_(
 		def is_in_geo(term: str) -> bool:
 			if term in GEOGRAPHIC_REFERENCES or term in US_STATE_CODES:
 				return True
+			if term.startswith('st ') and ('st. ' + term[3:]) in GEOGRAPHIC_REFERENCES:
+				return True
+			if term.startswith('st. ') and ('st ' + term[4:]) in GEOGRAPHIC_REFERENCES:
+				return True
 			# If plural, test morphological singular candidates against GEOGRAPHIC_REFERENCES
 			if term.endswith('s') and not term.endswith('ss'):
 				if term[:-1] in GEOGRAPHIC_REFERENCES:  # 'americans' -> 'american', 'russians' -> 'russian'
@@ -1970,38 +1999,47 @@ def _post_process_(
 			t = text.lower().strip()
 			if is_in_geo(t):
 				return True
+			if '/' in t and not any(ch.isdigit() for ch in t):
+				slash_parts = [p.strip(",. ") for p in t.split('/') if p.strip(",. ")]
+				if len(slash_parts) >= 2 and all(is_geo_location(p) for p in slash_parts):
+					return True
 			if ',' in t:
-				parts = [p.strip() for p in t.split(',')]
+				parts = [p.strip() for p in t.split(',') if p.strip()]
 				if len(parts) == 2:
 					prefix, suffix = parts[0], parts[1].rstrip('.')
 					if (is_in_geo(suffix) and is_in_geo(prefix)) or (suffix in US_STATE_CODES and len(prefix) >= 3):
 						return True
-			tokens = t.split()
-			for n in (1, 2):
-				if len(tokens) > n:
-					suffix = " ".join(tokens[-n:]).strip(",. ")
-					prefix = " ".join(tokens[:-n]).strip(",. ")
-					if is_in_geo(suffix) and is_in_geo(prefix):
-						return True
-			clean_toks = [w.strip(",. ") for w in tokens if w.strip(",. ")]
-			if len(clean_toks) >= 2 and all(is_in_geo(tok) for tok in clean_toks):
-				return True
-			if '/' in t and not any(ch.isdigit() for ch in t):
-				slash_parts = [p.strip(",. ") for p in t.split('/') if p.strip(",. ")]
-				if len(slash_parts) >= 2 and all(is_geo_location(p) for p in slash_parts):
+				if len(parts) >= 2 and all(is_geo_location(p) for p in parts):
+					return True
+			tokens = [w.strip(",;") for w in t.split() if w.strip(",;")]
+			n_tok = len(tokens)
+			if n_tok >= 2:
+				# Partition tokens into 1+ contiguous spans that each resolve to a geographic reference
+				# (handles multi-part combinations like "St. Giles Normandy France")
+				dp = [False] * (n_tok + 1)
+				dp[0] = True
+				for i in range(1, n_tok + 1):
+					for j in range(i):
+						if dp[j]:
+							span = " ".join(tokens[j:i])
+							span_stripped = span.strip(",. ")
+							if is_in_geo(span) or (span_stripped and is_in_geo(span_stripped)):
+								dp[i] = True
+								break
+				if dp[n_tok]:
 					return True
 			return False
 
 		# 1. Existing Stopwords check
 		if all(word in STOPWORDS for word in words) or phrase_lower in STOPWORDS or clean_phrase in STOPWORDS:
 			if verbose:
-				print(f"\t[SKIPPED] {repr(phrase):<55} stopword")
+				print(f"\t[SKIPPED] {phrase!r:<55}stopword")
 			return True
 
 		# 2. Direct / Multi-word / Comma-separated geographic location match (e.g. 'Americans', 'Rome Italy', 'Blanco, TX')
 		if is_geo_location(phrase_lower) or is_geo_location(clean_phrase):
 			if verbose:
-				print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference / demonym")
+				print(f"\t[SKIPPED] {phrase!r:<55}geographic reference / demonym")
 			return True
 
 		# 3. Geographic reference combined with a year/decade
@@ -2018,7 +2056,7 @@ def _post_process_(
 					place_part = " ".join(words[:-n]).strip(",. ")
 					if _GEO_YEAR_PATTERN.match(year_part) and is_geo_location(place_part):
 						if verbose:
-							print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference with year ({year_part})")
+							print(f"\t[SKIPPED] {phrase!r:<55}geographic reference with year ({year_part})")
 						return True
 			# Leading year
 			for n in (1, 2):
@@ -2027,7 +2065,7 @@ def _post_process_(
 					place_part = " ".join(words[n:]).strip(",. ")
 					if _GEO_YEAR_PATTERN.match(year_part) and is_geo_location(place_part):
 						if verbose:
-							print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference with year ({year_part})")
+							print(f"\t[SKIPPED] {phrase!r:<55}geographic reference with year ({year_part})")
 						return True
 
 		return False
@@ -2192,22 +2230,22 @@ def _post_process_(
 	def _lemmatize_(phrase: str, verbose: bool = False) -> str:
 		if is_quantified_plural(phrase):
 			if verbose:
-				print(f"\t[SKIPPED] {repr(phrase):<55} quantified plural")
+				print(f"\t[SKIPPED] {phrase!r:<55} quantified plural")
 			return phrase
 
 		if is_adjectival(phrase):
 			if verbose:
-				print(f"\t[PRESERVED] {repr(phrase):<55} constructed with adjective")
+				print(f"\t[PRESERVED] {phrase!r:<55} constructed with adjective")
 			return phrase # "newly built", "recently completed"
 
 		if is_activity_gerund(phrase):
 			if verbose:
-				print(f"\t[PRESERVED] {repr(phrase):<55} activity gerund")
+				print(f"\t[PRESERVED] {phrase!r:<55} activity gerund")
 			return phrase  # "snowshoeing", "skiing", "fishing"
 
 		if is_event_gerund(phrase):
 			if verbose:
-				print(f"\t[PRESERVED] {repr(phrase):<55} event gerund")
+				print(f"\t[PRESERVED] {phrase!r:<55} event gerund")
 			return phrase # "flag raising", "ship launching", "troop landing"
 
 		tokens = phrase.split()
@@ -2288,7 +2326,7 @@ def _post_process_(
 		lemmatized_phrase = ' '.join(lemmatized_tokens)
 
 		if verbose and lemmatized_phrase != phrase:
-			print(f"[LEMMATIZED] {repr(phrase):<55} → {repr(lemmatized_phrase)}")
+			print(f"[LEMMATIZED] {phrase!r:<55} → {repr(lemmatized_phrase)}")
 
 		return lemmatized_phrase
 
