@@ -439,11 +439,11 @@ def get_normalized(texts: set) -> set:
 def _post_process_(
 	labels_list: List[List[str]],
 	col: str,
+	digit_filtering: str, # 'aggressive' or 'strategic' filtering of digitized keywords
 	min_kw_ch_length: int = 3,
 	max_kw_word_length: int = 10,
 	apply_lemmatization: bool = False, # let embedding-based canonicalization merge singulars, plurals, and casing variations.
 	apply_normalization: bool = False, # let embedding-based canonicalization merge synonyms and near-synonym
-	digit_filtering_approach: str = "aggressive", # 'aggressive' or 'strategic' filtering of digitized keywords
 	verbose: bool = False,
 ) -> List[List[str]]:
 	pp_st = time.time()
@@ -454,10 +454,11 @@ def _post_process_(
 		print(f"  ├─ {col}")
 		print(f"  ├─ {len(labels_list) if labels_list else 0} labels_list: {type(labels_list)}")
 		print(f"  ├─ Stopwords                    : {len(STOPWORDS)}")
-		print(f"  ├─ min keyword character length : {min_kw_ch_length}, max keyword length: {max_kw_word_length}")
+		print(f"  ├─ min keyword character length : {min_kw_ch_length}") 
+		print(f"  ├─ max keyword length           : {max_kw_word_length}")
 		print(f"  ├─ apply_lemmatization          : {apply_lemmatization}")
 		print(f"  ├─ apply_normalization          : {apply_normalization}")
-		print(f"  └─ digit_filtering_approach     : {digit_filtering_approach}")
+		print(f"  └─ digit_filtering              : {digit_filtering}")
 		print("-"*50)
 	
 	if not labels_list:
@@ -2743,7 +2744,7 @@ def _post_process_(
 
 		current_items = filter_digits(
 			keywords=current_items,
-			approach=digit_filtering_approach,
+			approach=digit_filtering,
 			verbose=verbose,
 		)
 

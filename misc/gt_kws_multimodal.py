@@ -152,9 +152,10 @@ def get_multimodal_annotation(
 	intra_sim: float,
 	min_consolidation: float,
 	max_consolidation: float,
+	digit_filtering: str,
 	llm_quantization_bits: Optional[int] = None,
 	vlm_quantization_bits: Optional[int] = None,
-	nc: int = None,
+	nc: Optional[int] = None,
 	verbose: bool = False,
 ):
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
@@ -224,7 +225,7 @@ def get_multimodal_annotation(
 		multimodal_labels = _post_process_(
 			labels_list=multimodal_labels, 
 			col="multimodal_labels",
-			digit_filtering_approach="strategic",
+			digit_filtering=digit_filtering,
 			verbose=verbose
 		)
 		# ── Call 2: LLM ──
@@ -232,7 +233,7 @@ def get_multimodal_annotation(
 		llm_based_labels = _post_process_(
 			labels_list=llm_based_labels, 
 			col="llm_based_labels",
-			digit_filtering_approach="strategic",
+			digit_filtering=digit_filtering,
 			verbose=False,
 		)
 		# ── Call 3: VLM ──
@@ -240,7 +241,7 @@ def get_multimodal_annotation(
 		vlm_based_labels = _post_process_(
 			labels_list=vlm_based_labels, 
 			col="vlm_based_labels", 
-			digit_filtering_approach="strategic",
+			digit_filtering=digit_filtering,
 			verbose=False,
 		)
 	finally:
@@ -487,11 +488,12 @@ def main():
 	parser.add_argument("--vlm_max_generated_tks", '-vlm_mgt', type=int, default=36, help="Max number of generated tokens using VLM")
 	parser.add_argument("--vlm_batch_size", '-vlm_bs', type=int, default=2, help="Batch size for visual processing using VLM (adjust based on GPU memory)")
 	parser.add_argument("--vlm_quantization_bits", '-vlm_qb', type=int, default=None, help="LLM Quantization bits")
+	parser.add_argument("--digit_filtering", '-dig_flt', type=str, default="strategic", help="'aggressive' or 'strategic' filtering of digitized keywords")
 	parser.add_argument("--embedding_model_id", '-emb_id', type=str, default="Octen/Octen-Embedding-0.6B", help="Embedding model ID")
 	parser.add_argument("--clip_architecture", '-clip_arch', type=str, default="ViT-B/32", help="CLIP architecture [Default: ViT-B/32]")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--num_clusters", '-nc', type=int, default=None, help="Number of clusters")
-	parser.add_argument("--intra_similarity", '-isim', type=float, default=0.70, help="Cluster intra similarity")
+	parser.add_argument("--intra_similarity", '-isim', type=float, default=0.69, help="Cluster intra similarity")
 	parser.add_argument("--min_consolidation", '-min_con', type=float, default=4.0, help="min consolidation")
 	parser.add_argument("--max_consolidation", '-max_con', type=float, default=8.0, help="min consolidation")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
@@ -521,6 +523,7 @@ def main():
 		vlm_batch_size=args.vlm_batch_size,
 		vlm_max_generated_tks=args.vlm_max_generated_tks,
 		max_keywords=args.max_keywords,
+		digit_filtering=args.digit_filtering,
 		embedding_model_id=args.embedding_model_id,
 		clip_architecture=args.clip_architecture,
 		llm_quantization_bits=args.llm_quantization_bits,
