@@ -11,7 +11,7 @@
 #SBATCH --mem=204G
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
-#SBATCH --time=0-02:25:00
+#SBATCH --time=0-08:25:00
 ##SBATCH --begin=03:30:00
 
 ##############################################################################
