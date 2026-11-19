@@ -422,6 +422,41 @@ def chunked_similarity_computation(
 	
 	return similarity_matrix
 
+@torch.no_grad()
+def chunked_probe_logit_computation(
+	image_embeds: torch.Tensor,
+	probe_head: torch.nn.Module,
+	temperature: float,
+	chunk_size: int = 1000,
+) -> torch.Tensor:
+	"""
+	Compute exact trained probe logits (x @ W.T + b) / temperature in chunks.
+	Preserves learned weight row-norms ||W_c|| and per-class biases b_c
+	instead of discarding them via L2-normalized cosine similarity.
+	"""
+	num_queries = image_embeds.shape[0]
+	device = image_embeds.device
+	probe_head.eval()
+
+	# Infer output dimension from a 1-sample forward pass (supports Linear & MLP)
+	probe_dtype = next(probe_head.parameters()).dtype
+	first_chunk = probe_head(image_embeds[:1].to(device=device, dtype=probe_dtype)).float()
+	num_classes = first_chunk.shape[1]
+
+	logits_matrix = torch.zeros(
+		num_queries,
+		num_classes,
+		device=device,
+		dtype=torch.float32,
+	)
+
+	for i in range(0, num_queries, chunk_size):
+		end_i = min(i + chunk_size, num_queries)
+		query_chunk = image_embeds[i:end_i].to(device=device, dtype=probe_dtype)
+		logits_matrix[i:end_i] = probe_head(query_chunk).float() / temperature
+
+	return logits_matrix
+
 def compute_multilabel_mrr(
 		similarity_matrix: torch.Tensor,
 		query_labels: torch.Tensor,
@@ -1244,6 +1279,8 @@ def get_validation_metrics(
 	model_hash: str = None,
 	min_number_samples: int = int(2e4),
 	class_embeds_override: Optional[torch.Tensor] = None,
+	use_probe_logits: bool = False,
+	active_mask: Optional[torch.Tensor] = None,
 	verbose: bool = True,
 ) -> Dict:
 
@@ -1343,57 +1380,124 @@ def get_validation_metrics(
 			verbose=verbose,
 		)
 
-	# Step 3: Compute class embeddings
-	if class_embeds_override is not None:
-		# Use probe's trained W instead of frozen text encoder
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
-			class_text_embeds = torch.nn.functional.normalize(class_embeds_override, dim=-1).to(device).float()
-		if verbose:
-			print(f"class_text_embeds [probe W override]: {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
-	else:
-		# Standard path: encode class names with frozen text encoder
-		text_batch_size = validation_loader.batch_size
-		if verbose:
-			print(f"Pre-encoding {n_classes} labels (batch_size={text_batch_size})")
-
-		class_text_embeds = []
-		model.eval()
-		with torch.no_grad():
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
-				for i in tqdm(range(0, n_classes, text_batch_size), desc="Encoding batched labels"):
-					end_idx = min(i + text_batch_size, n_classes)
-					batch_class_names = class_names[i:end_idx]
-					batch_class_texts = clip.tokenize(batch_class_names).to(device)
-					batch_embeds = model.encode_text(batch_class_texts)
-					batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
-					class_text_embeds.append(batch_embeds.cpu())
-
-					del batch_class_texts, batch_embeds
-					torch.cuda.empty_cache()
-
-		class_text_embeds = torch.cat(class_text_embeds, dim=0).to(device)
-
-		if verbose:
-			print(f"class_text_embeds: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
-
-	# Step 4: Compute similarity matrices (chunked for memory efficiency)
+	# Step 3 & Step 4: Compute class embeddings and similarity/logit matrices
 	device_image_embeds = all_image_embeds.to(device, non_blocking=True)
-	device_class_text_embeds = class_text_embeds.to(device, non_blocking=True)
 	device_labels = all_labels.to(device, non_blocking=True)
+	device_active_mask = active_mask.to(device=device, dtype=torch.bool) if active_mask is not None else None
 
-	i2t_similarity = chunked_similarity_computation(
-		device_image_embeds, 
-		device_class_text_embeds, 
-		chunk_size=chunk_size,
-		temperature=temperature
-	)
+	if use_probe_logits:
+		if not hasattr(model, "probe"):
+			raise AttributeError(
+				f"use_probe_logits=True requires model to have a '.probe' head, got {type(model)}."
+			)
 
-	t2i_similarity = chunked_similarity_computation(
-		device_class_text_embeds, 
-		device_image_embeds, 
-		chunk_size=chunk_size,
-		temperature=temperature
-	)
+		# Use the post-checkpoint-reload probe weights & biases directly:
+		# logits = model.probe(image_embeds) / temperature = (x @ W.T + b) / temperature
+		i2t_similarity = chunked_probe_logit_computation(
+			image_embeds=device_image_embeds,
+			probe_head=model.probe,
+			temperature=temperature,
+			chunk_size=chunk_size,
+		)
+		# Closed-set T2I score matrix is the exact transpose of probe logits [C, N]
+		t2i_similarity = i2t_similarity.T.contiguous()
+
+		# Keep raw probe weight matrix solely for embedding-geometry diagnostics
+		device_class_text_embeds = model.weight.detach().to(device, non_blocking=True).float()
+
+		if verbose:
+			w_raw = model.weight.detach().float()
+			b_raw = model.bias.detach().float()
+			w_norms = w_raw.norm(dim=1)
+			print(f"\n[PROBE EVAL — EXACT TRAINED LOGITS]")
+			print(f"  ├─ Scoring fn       : (x @ W.T + b) / temperature (temperature={temperature})")
+			print(f"  ├─ Probe head       : {model.probe}")
+			print(f"  ├─ W shape / norms  : {tuple(w_raw.shape)} (min, max): ({w_norms.min().item():.4f}, {w_norms.max().item():.4f}) μ±σ: {w_norms.mean().item():.4f} ± {w_norms.std().item():.4f}")
+			print(f"  ├─ b shape / values : {tuple(b_raw.shape)} (min, max): ({b_raw.min().item():.4f}, {b_raw.max().item():.4f}) μ±σ: {b_raw.mean().item():.4f} ± {b_raw.std().item():.4f}")
+			if device_active_mask is not None:
+				b_act = b_raw[device_active_mask]
+				b_inact = b_raw[~device_active_mask]
+				sim_act = i2t_similarity[:, device_active_mask]
+				sim_inact = i2t_similarity[:, ~device_active_mask]
+				print(
+					f"  ├─ b | ACTIVE   (n={b_act.numel():5d}): "
+					f"(min, max): ({b_act.min().item():.4f}, {b_act.max().item():.4f}) "
+					f"μ±σ: {b_act.mean().item():.4f} ± {b_act.std().item():.4f}"
+				)
+				if b_inact.numel() > 0:
+					print(
+						f"  ├─ b | INACTIVE (n={b_inact.numel():5d}): "
+						f"(min, max): ({b_inact.min().item():.4f}, {b_inact.max().item():.4f}) "
+						f"μ±σ: {b_inact.mean().item():.4f} ± {b_inact.std().item():.4f}"
+					)
+				print(
+					f"  ├─ Logits | ACTIVE  : "
+					f"(min, max): ({sim_act.min().item():.3f}, {sim_act.max().item():.3f}) "
+					f"μ±σ: {sim_act.mean().item():.3f} ± {sim_act.std().item():.3f} "
+					f"(median: {sim_act.median().item():.3f}) | frac(>0): {(sim_act > 0).float().mean().item():.5f}"
+				)
+				if sim_inact.numel() > 0:
+					print(
+						f"  └─ Logits | INACTIVE: "
+						f"(min, max): ({sim_inact.min().item():.3f}, {sim_inact.max().item():.3f}) "
+						f"μ±σ: {sim_inact.mean().item():.3f} ± {sim_inact.std().item():.3f} "
+						f"| frac(>0): {(sim_inact > 0).float().mean().item():.5f}"
+					)
+			else:
+				print(
+					f"  └─ Logits (all)     : "
+					f"(min, max): ({i2t_similarity.min().item():.3f}, {i2t_similarity.max().item():.3f}) "
+					f"μ±σ: {i2t_similarity.mean().item():.3f} ± {i2t_similarity.std().item():.3f} "
+					f"| frac(>0): {(i2t_similarity > 0).float().mean().item():.5f}"
+				)
+	else:
+		if class_embeds_override is not None:
+			# Legacy override path (L2-normalized custom class embeddings)
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
+				class_text_embeds = torch.nn.functional.normalize(class_embeds_override, dim=-1).to(device).float()
+			if verbose:
+				print(f"class_text_embeds [override]: {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
+		else:
+			# Standard path: encode class names with frozen text encoder
+			text_batch_size = validation_loader.batch_size
+			if verbose:
+				print(f"Pre-encoding {n_classes} labels (batch_size={text_batch_size})")
+
+			class_text_embeds = []
+			model.eval()
+			with torch.no_grad():
+				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
+					for i in tqdm(range(0, n_classes, text_batch_size), desc="Encoding batched labels"):
+						end_idx = min(i + text_batch_size, n_classes)
+						batch_class_names = class_names[i:end_idx]
+						batch_class_texts = clip.tokenize(batch_class_names).to(device)
+						batch_embeds = model.encode_text(batch_class_texts)
+						batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
+						class_text_embeds.append(batch_embeds.cpu())
+
+						del batch_class_texts, batch_embeds
+						torch.cuda.empty_cache()
+
+			class_text_embeds = torch.cat(class_text_embeds, dim=0).to(device)
+
+			if verbose:
+				print(f"class_text_embeds: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
+
+		device_class_text_embeds = class_text_embeds.to(device, non_blocking=True)
+
+		i2t_similarity = chunked_similarity_computation(
+			device_image_embeds, 
+			device_class_text_embeds, 
+			chunk_size=chunk_size,
+			temperature=temperature
+		)
+
+		t2i_similarity = chunked_similarity_computation(
+			device_class_text_embeds, 
+			device_image_embeds, 
+			chunk_size=chunk_size,
+			temperature=temperature
+		)
 
 	# Step 4.5: Embedding Geometry Diagnostics
 	diagnose_embedding_geometry(
@@ -1417,6 +1521,8 @@ def get_validation_metrics(
 		device_image_embeds=device_image_embeds,
 		device_class_text_embeds=device_class_text_embeds,
 		temperature=temperature,
+		use_precomputed_logits=use_probe_logits,
+		active_mask=device_active_mask if use_probe_logits else None,
 		verbose=verbose,
 	)
 	
@@ -1425,6 +1531,8 @@ def get_validation_metrics(
 		f"{finetune_strategy}_"
 		f"{model_arch_name.replace('/', '_')}"
 	)
+	if use_probe_logits:
+		cache_key_base += "_probe_logits"
 	if model_hash:
 		cache_key_base += f"_{model_hash}"
 
@@ -1504,6 +1612,8 @@ def compute_full_set_metrics_from_cache(
 		device_image_embeds: torch.Tensor,
 		device_class_text_embeds: torch.Tensor,
 		temperature: float,
+		use_precomputed_logits: bool = False,
+		active_mask: Optional[torch.Tensor] = None,
 		verbose: bool = False,
 ) -> Dict:
 		"""
@@ -1558,6 +1668,8 @@ def compute_full_set_metrics_from_cache(
 				labels=labels,
 				temperature=temperature,
 				topk=5,
+				logits_override=i2t_similarity if use_precomputed_logits else None,
+				active_mask=active_mask,
 				verbose=verbose,
 			)
 			cos_sim = None  # no longer computed for multi-label
@@ -1583,21 +1695,44 @@ def compute_full_set_metrics_from_cache(
 			
 			# Make predictions
 			i2t_preds = (i2t_probs > threshold).float()
+
+			# Restrict classification metrics to active classes when provided (e.g. Linear Probe)
+			if active_mask is not None:
+				eval_mask = active_mask.to(device=i2t_preds.device, dtype=torch.bool)
+				eval_preds = i2t_preds[:, eval_mask]
+				eval_labels = labels[:, eval_mask]
+				if verbose:
+					inact_fp = i2t_preds[:, ~eval_mask].sum().item() if (~eval_mask).any() else 0.0
+					inact_total = i2t_preds[:, ~eval_mask].numel() if (~eval_mask).any() else 0
+					print(
+						f"\n[FULL-SET CLASSIFICATION METRICS — ACTIVE MASKED] "
+						f"active={int(eval_mask.sum().item())}/{n_classes} | "
+						f"inactive FP(>0.5)={int(inact_fp)}/{inact_total}"
+					)
+			else:
+				eval_preds = i2t_preds
+				eval_labels = labels
 			
 			# Compute additional metrics
-			hamming_loss = (i2t_preds != labels).float().mean().item()
-			partial_acc = (i2t_preds == labels).float().mean().item()
+			hamming_loss = (eval_preds != eval_labels).float().mean().item()
+			partial_acc = (eval_preds == eval_labels).float().mean().item()
 			
 			try:
 				f1_score_val = f1_score(
-					labels.cpu().numpy(), 
-					i2t_preds.cpu().numpy(), 
+					eval_labels.cpu().numpy(), 
+					eval_preds.cpu().numpy(), 
 					average='weighted',
 					zero_division=0
 				)
 			except Exception as e:
 				print(f"Error computing F1 score: {e}")
 				f1_score_val = None
+			if verbose and active_mask is not None:
+				print(
+					f"  ├─ Hamming Loss (active): {hamming_loss:.6f}\n"
+					f"  ├─ Partial Acc  (active): {partial_acc:.6f}\n"
+					f"  └─ Weighted F1  (active): {f1_score_val if f1_score_val is not None else 'N/A'}"
+				)
 		
 		return {
 				"img2txt_acc": float(img2txt_acc),
@@ -2025,59 +2160,85 @@ def get_multilabel_alignment_score(
 	temperature: float,
 	topk: int,
 	min_number_samples: int = 5000,
+	logits_override: Optional[torch.Tensor] = None,
+	active_mask: Optional[torch.Tensor] = None,
 	verbose: bool = False,
 ) -> float:
 
-	# Guard: NaN/Inf check with detailed diagnostics
-	image_has_nan = torch.isnan(image_embeds).any()
-	image_has_inf = torch.isinf(image_embeds).any()
-	class_has_nan = torch.isnan(all_class_embeds).any()
-	class_has_inf = torch.isinf(all_class_embeds).any()
-	
-	if image_has_nan or class_has_nan or image_has_inf or class_has_inf:
-		if verbose:
-			print(f"\n[GUARD] NaN/Inf detected in embeddings:")
-			print(f"    image_embeds — NaN: {str(image_has_nan.item()):7} Inf: {str(image_has_inf.item())}")
-			print(f"    class_embeds — NaN: {str(class_has_nan.item()):7} Inf: {str(class_has_inf.item())}")
-			
-			if image_has_nan:
-				nan_mask = torch.isnan(image_embeds)
-				nan_rows = nan_mask.any(dim=1).nonzero(as_tuple=True)[0]
-				nan_cols = nan_mask.any(dim=0).nonzero(as_tuple=True)[0]
-				print(f"    image_embeds NaN locations:")
-				print(f"      Affected samples    (rows): {nan_rows.tolist()[:10]} {'...' if len(nan_rows) > 10 else ''} (total: {len(nan_rows)})")
-				print(f"      Affected dimensions (cols): {nan_cols.tolist()[:10]} {'...' if len(nan_cols) > 10 else ''} (total: {len(nan_cols)})")
-			
-			if class_has_nan:
-				nan_mask = torch.isnan(all_class_embeds)
-				nan_rows = nan_mask.any(dim=1).nonzero(as_tuple=True)[0]
-				nan_cols = nan_mask.any(dim=0).nonzero(as_tuple=True)[0]
-				print(f"    class_embeds NaN locations:")
-				print(f"      Affected labels     (rows): {nan_rows.tolist()[:10]} {'...' if len(nan_rows) > 10 else ''} (total: {len(nan_rows)})")
-				print(f"      Affected dimensions (cols): {nan_cols.tolist()[:10]} {'...' if len(nan_cols) > 10 else ''} (total: {len(nan_cols)})")
-			
-			if image_has_inf:
-				inf_mask = torch.isinf(image_embeds)
-				inf_count = inf_mask.sum().item()
-				print(f"    image_embeds Inf count: {inf_count}")
-			
-			if class_has_inf:
-				inf_mask = torch.isinf(all_class_embeds)
-				inf_count = inf_mask.sum().item()
-				print(f"    class_embeds Inf count: {inf_count}")
+	if logits_override is not None:
+		logits_has_nan = torch.isnan(logits_override).any()
+		logits_has_inf = torch.isinf(logits_override).any()
+		if logits_has_nan or logits_has_inf:
+			if verbose:
+				print(f"\n[GUARD] NaN/Inf detected in logits_override:")
+				print(f"    logits_override — NaN: {str(logits_has_nan.item()):7} Inf: {str(logits_has_inf.item())}")
+			return float('nan')
+		logits = logits_override.clone().float()
+		score_source = "precomputed probe logits (x @ W.T + b) / temperature"
+	else:
+		# Guard: NaN/Inf check with detailed diagnostics
+		image_has_nan = torch.isnan(image_embeds).any()
+		image_has_inf = torch.isinf(image_embeds).any()
+		class_has_nan = torch.isnan(all_class_embeds).any()
+		class_has_inf = torch.isinf(all_class_embeds).any()
 		
-		return float('nan')
-	
-	# [N, C] cosine similarity
-	# Positive temperature scaling does not change Top-K rankings.
-	# It is retained only for consistency with the evaluation protocol.
-	image_embeds_n = torch.nn.functional.normalize(image_embeds, dim=1)
-	all_class_embeds_n = torch.nn.functional.normalize(all_class_embeds, dim=1)
+		if image_has_nan or class_has_nan or image_has_inf or class_has_inf:
+			if verbose:
+				print(f"\n[GUARD] NaN/Inf detected in embeddings:")
+				print(f"    image_embeds — NaN: {str(image_has_nan.item()):7} Inf: {str(image_has_inf.item())}")
+				print(f"    class_embeds — NaN: {str(class_has_nan.item()):7} Inf: {str(class_has_inf.item())}")
+				
+				if image_has_nan:
+					nan_mask = torch.isnan(image_embeds)
+					nan_rows = nan_mask.any(dim=1).nonzero(as_tuple=True)[0]
+					nan_cols = nan_mask.any(dim=0).nonzero(as_tuple=True)[0]
+					print(f"    image_embeds NaN locations:")
+					print(f"      Affected samples    (rows): {nan_rows.tolist()[:10]} {'...' if len(nan_rows) > 10 else ''} (total: {len(nan_rows)})")
+					print(f"      Affected dimensions (cols): {nan_cols.tolist()[:10]} {'...' if len(nan_cols) > 10 else ''} (total: {len(nan_cols)})")
+				
+				if class_has_nan:
+					nan_mask = torch.isnan(all_class_embeds)
+					nan_rows = nan_mask.any(dim=1).nonzero(as_tuple=True)[0]
+					nan_cols = nan_mask.any(dim=0).nonzero(as_tuple=True)[0]
+					print(f"    class_embeds NaN locations:")
+					print(f"      Affected labels     (rows): {nan_rows.tolist()[:10]} {'...' if len(nan_rows) > 10 else ''} (total: {len(nan_rows)})")
+					print(f"      Affected dimensions (cols): {nan_cols.tolist()[:10]} {'...' if len(nan_cols) > 10 else ''} (total: {len(nan_cols)})")
+				
+				if image_has_inf:
+					inf_mask = torch.isinf(image_embeds)
+					inf_count = inf_mask.sum().item()
+					print(f"    image_embeds Inf count: {inf_count}")
+				
+				if class_has_inf:
+					inf_mask = torch.isinf(all_class_embeds)
+					inf_count = inf_mask.sum().item()
+					print(f"    class_embeds Inf count: {inf_count}")
+			
+			return float('nan')
+		
+		# [N, C] cosine similarity
+		# Positive temperature scaling does not change Top-K rankings.
+		# It is retained only for consistency with the evaluation protocol.
+		image_embeds_n = torch.nn.functional.normalize(image_embeds, dim=1)
+		all_class_embeds_n = torch.nn.functional.normalize(all_class_embeds, dim=1)
 
-	logits = (image_embeds_n @ all_class_embeds_n.T) / temperature
-	
-	# Clamp topk to available classes
-	effective_k = min(topk, logits.shape[1])
+		logits = (image_embeds_n @ all_class_embeds_n.T) / temperature
+		score_source = "cosine similarity (normalize(img) @ normalize(cls).T) / temperature"
+
+	# Optional active-class mask (prevents untrained inactive classes from polluting top-K ranks)
+	if active_mask is not None:
+		eval_active_mask = active_mask.to(device=logits.device, dtype=torch.bool)
+		n_active_cls = int(eval_active_mask.sum().item())
+		n_inactive_cls = int((~eval_active_mask).sum().item())
+		logits_stats_view = logits[:, eval_active_mask]
+		logits[:, ~eval_active_mask] = float("-inf")
+		effective_k = min(topk, max(n_active_cls, 1))
+	else:
+		eval_active_mask = None
+		n_active_cls = logits.shape[1]
+		n_inactive_cls = 0
+		logits_stats_view = logits
+		effective_k = min(topk, logits.shape[1])
 	
 	# [N, K] top-K class indices per image
 	topk_indices = logits.topk(effective_k, dim=1).indices
@@ -2094,18 +2255,34 @@ def get_multilabel_alignment_score(
 	
 	if verbose:
 		print(f"\nAlignment Score @ top-{effective_k} Temperature: {temperature}")
-		print(f"logits:")
-		print(f"  ├─ {type(logits)} {logits.shape} {logits.dtype} {logits.device}")
-		print(f"  ├─ (min, max): ({logits.min().item():.2f}, {logits.max().item():.2f})")
-		print(f"  ├─ μ±σ: {logits.mean().item():.2f} ± {logits.std().item():.2f} (median: {logits.median().item()})")
+		print(f"  ├─ Source: {score_source}")
+		if eval_active_mask is not None:
+			print(f"  ├─ Active-class mask: {n_active_cls} active / {n_inactive_cls} inactive masked to -inf")
+		print(f"logits (evaluated classes):")
+		print(f"  ├─ {type(logits_stats_view)} {logits_stats_view.shape} {logits_stats_view.dtype} {logits_stats_view.device}")
+		print(f"  ├─ (min, max): ({logits_stats_view.min().item():.2f}, {logits_stats_view.max().item():.2f})")
+		print(f"  ├─ μ±σ: {logits_stats_view.mean().item():.2f} ± {logits_stats_view.std().item():.2f} (median: {logits_stats_view.median().item()})")
 
 		per_class_hits = (topk_mask & labels.bool()).sum(dim=0).float()  # [C]
-		per_class_support = labels.sum(dim=0).float().clamp(min=1)       # [C]
-		per_class_hit_rate = per_class_hits / per_class_support
-		worst_classes = per_class_hit_rate.topk(10, largest=False)
-		print(
-			f"{worst_classes.values.numel()} worst-recalled classes (idx, hit_rate): "
-			f"{list(zip(worst_classes.indices.tolist(), worst_classes.values.round(decimals=3).tolist()))}")
+		per_class_support_raw = labels.sum(dim=0).float()                # [C]
+		per_class_hit_rate = per_class_hits / per_class_support_raw.clamp(min=1)
+		if eval_active_mask is not None:
+			supported_active = eval_active_mask & (per_class_support_raw > 0)
+			candidate_idx = torch.where(supported_active)[0]
+			if candidate_idx.numel() > 0:
+				k_worst = min(10, candidate_idx.numel())
+				worst_rel = per_class_hit_rate[candidate_idx].topk(k_worst, largest=False)
+				worst_global_idx = candidate_idx[worst_rel.indices].tolist()
+				print(
+					f"{k_worst} worst-recalled active supported classes (idx, hit_rate): "
+					f"{list(zip(worst_global_idx, worst_rel.values.round(decimals=3).tolist()))}"
+				)
+		else:
+			worst_classes = per_class_hit_rate.topk(10, largest=False)
+			print(
+				f"{worst_classes.values.numel()} worst-recalled classes (idx, hit_rate): "
+				f"{list(zip(worst_classes.indices.tolist(), worst_classes.values.round(decimals=3).tolist()))}"
+			)
 
 		print(
 			f"Samples with ≥1 true class in top-{effective_k}: "
@@ -2453,6 +2630,7 @@ def evaluate_best_model(
 	embeddings_cache=None,
 	lora_params: Optional[Dict] = None,
 	class_embeds_override: Optional[torch.Tensor] = None,
+	use_probe_logits: bool = False,
 	tier_spec_path: str = None,
 	verbose: bool = False,
 ):
@@ -2538,6 +2716,22 @@ def evaluate_best_model(
 	if verbose:
 		param_count = sum(p.numel() for p in model.parameters())
 		print(f"\n{type(model)} {model.__class__.__name__} {model.name} Parameters: {param_count:,}")
+		if use_probe_logits and hasattr(model, "probe"):
+			w_loaded = model.weight.detach().float()
+			b_loaded = model.bias.detach().float()
+			print(f"[POST-LOAD PROBE VERIFICATION] source={model_source}")
+			print(
+				f"  ├─ loaded W norms: (min, max): ({w_loaded.norm(dim=1).min().item():.4f}, "
+				f"{w_loaded.norm(dim=1).max().item():.4f}) μ±σ: "
+				f"{w_loaded.norm(dim=1).mean().item():.4f} ± {w_loaded.norm(dim=1).std().item():.4f}"
+			)
+			print(
+				f"  └─ loaded b vals : (min, max): ({b_loaded.min().item():.4f}, "
+				f"{b_loaded.max().item():.4f}) μ±σ: "
+				f"{b_loaded.mean().item():.4f} ± {b_loaded.std().item():.4f}"
+			)
+			if class_embeds_override is not None:
+				print("  [NOTE] Ignoring legacy class_embeds_override because use_probe_logits=True uses loaded model.probe directly.")
 
 	validation_results = get_validation_metrics(
 		model=model,
@@ -2551,7 +2745,9 @@ def evaluate_best_model(
 		is_training=False, # Use cache for final evaluation/inference
 		model_hash=get_model_hash(model),
 		temperature=temperature,
-		class_embeds_override=class_embeds_override,
+		class_embeds_override=None if use_probe_logits else class_embeds_override,
+		use_probe_logits=use_probe_logits,
+		active_mask=active_mask if use_probe_logits else None,
 		verbose=verbose,
 	)
 

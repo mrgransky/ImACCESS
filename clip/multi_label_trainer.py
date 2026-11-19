@@ -347,9 +347,10 @@ def probe_multi_label(
 		print(f"   ├─ {dataset_name}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Device     : {type(device)} {device}")
-		print(f"   ├─ Temperature: {temperature}")
-		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+		print(f"   ├─ Temperature: {temperature} (raw BCE logits — scale learned by W & b)")
+		print(f"   ├─ Objective  : Unidirectional I2T BCEWithLogitsLoss (closed-set; no T2I loss)")
 	
+	amp_dtype = torch.float32
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
 		gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
@@ -364,7 +365,7 @@ def probe_multi_label(
 	for param in model.parameters():
 		param.requires_grad = False
 
-	# Build probe (wraps frozen CLIP, adds trainable W)
+	# Build probe (wraps frozen CLIP, adds trainable W and b)
 	model.eval()
 	probe = get_probe_clip(
 		clip_model=model,
@@ -391,6 +392,19 @@ def probe_multi_label(
 	N = masks["N"]
 	train_freq = masks["train_freq"]
 
+	# Initialize bias to weighted-BCE prior log-odds so step-0 negative gradients
+	# do not force AdamW to overwrite W_init with -alpha * mean(x) on Epoch 1.
+	probe.init_bias_from_priors(
+		train_freq=train_freq,
+		pos_weight=pos_weight,
+		num_samples=N,
+		active_mask=active_mask,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		inactive_bias=-20.0,
+		verbose=verbose,
+	)
+
 	# Criteria
 	# For the probe, loss is computed directly on logits [B, C] — same shape
 	# as i2t_sim — so criterion_i2t with pos_weight applies directly.
@@ -406,12 +420,19 @@ def probe_multi_label(
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
+	# Separate weight vs bias param groups: do NOT apply weight decay to biases
+	# so prior-initialized biases (esp. rare & inactive) are not pulled back toward 0.
+	decay_params = [p for n, p in probe.named_parameters() if p.requires_grad and not n.endswith("bias")]
+	no_decay_params = [p for n, p in probe.named_parameters() if p.requires_grad and n.endswith("bias")]
+	optimizer_param_groups = [
+		{"params": decay_params, "weight_decay": weight_decay},
+		{"params": no_decay_params, "weight_decay": 0.0},
+	]
 	optimizer = torch.optim.AdamW(
-		params=probe.parameters(),
+		params=optimizer_param_groups,
 		lr=learning_rate,
 		betas=(0.9, 0.98),
 		eps=1e-6,
-		weight_decay=weight_decay,
 	)
 
 	if verbose:
@@ -419,7 +440,8 @@ def probe_multi_label(
 		print(f"  ├─ LR: {learning_rate}")
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
-		print(f"  └─ Weight Decay: {weight_decay}")
+		print(f"  ├─ Weight group (wd={weight_decay}): {sum(p.numel() for p in decay_params):,} params")
+		print(f"  └─ Bias group   (wd=0.0):          {sum(p.numel() for p in no_decay_params):,} params")
 
 	# approximate T_max: N epochs * minimum_epochs
 	estimated_epochs = 2 * minimum_epochs
@@ -440,22 +462,27 @@ def probe_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 	
+	# Probe head runs in FP32 for exact gradients on small per-class BCE signals & large negative biases;
+	# GradScaler is only ever needed for FP16 (never BF16 or FP32).
+	use_probe_amp = False
+	use_grad_scaler = use_probe_amp and torch.cuda.is_available() and (amp_dtype == torch.float16)
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**15,      # 2048 (Conservative start)
-		growth_factor=2.0,     # Smoother growth than default 2.0
-		backoff_factor=0.5,    # Standard
-		growth_interval=2000,  # Keep scale stable longer
+		enabled=use_grad_scaler,
+		init_scale=2**15,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) | Probe head precision: torch.float32 (feature extraction AMP: {amp_dtype})")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
+		print(f"  └─ backbone_amp_dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
 		print()
 
 	mdl_fpth = os.path.join(
@@ -482,6 +509,7 @@ def probe_multi_label(
 	# Feature caching
 	# wrap feature extraction in torch.no_grad() to avoid building
 	# a computation graph for 74K images — CLIP is frozen, gradients useless.
+	mean_train_img_dir = None
 	if cache_features:
 		print("Pre-extracting image features (CLIP frozen — runs once)...")
 		model.eval()
@@ -490,14 +518,14 @@ def probe_multi_label(
 			feats, lbls = [], []
 
 			with torch.no_grad(), torch.amp.autocast(
-					device_type=device.type, 
+					device_type=torch.device(device).type, 
 					enabled=torch.cuda.is_available(),
 					dtype=amp_dtype,
 				):
 					for images, _, label_vectors in tqdm(loader, desc=desc):
 						images = images.to(device, non_blocking=True)
 
-						emb = model.encode_image(images)
+						emb = model.encode_image(images).float()
 						emb = torch.nn.functional.normalize(emb, dim=-1)
 
 						feats.append(emb.cpu())
@@ -508,7 +536,16 @@ def probe_multi_label(
 		train_feats, train_lbls = extract_features(train_loader, "Train features")
 		val_feats, val_lbls = extract_features(validation_loader, "Val features")
 
-		print(f"Cached — train: {train_feats.shape}, val: {val_feats.shape}")
+		# Compute mean CLIP image direction u_xbar to monitor anti-mean collapse during training
+		mean_train_img_vec = train_feats.mean(dim=0, keepdim=True)
+		mean_train_img_norm = mean_train_img_vec.norm().item()
+		mean_train_img_dir = torch.nn.functional.normalize(mean_train_img_vec, dim=-1).to(device)
+
+		print(
+			f"Cached — train: {train_feats.shape} ({train_feats.dtype}), "
+			f"val: {val_feats.shape} ({val_feats.dtype}) | "
+			f"||mean(x_train)||_2 = {mean_train_img_norm:.4f} (image cone concentration)"
+		)
 		
 		train_feature_loader = torch.utils.data.DataLoader(
 			torch.utils.data.TensorDataset(train_feats, train_lbls),
@@ -546,9 +583,9 @@ def probe_multi_label(
 		
 		for bidx, batch_data in enumerate(data_iter):
 			if cache_features:
-				# Using cached features
+				# Using cached FP32 L2-normalized features
 				image_embeds, label_vectors = batch_data
-				image_embeds = image_embeds.to(device, non_blocking=True)
+				image_embeds = image_embeds.to(device, non_blocking=True).float()
 				label_vectors = label_vectors.to(device, non_blocking=True).float()
 			else:
 				images, _, label_vectors = batch_data
@@ -556,18 +593,23 @@ def probe_multi_label(
 				label_vectors = label_vectors.to(device, non_blocking=True).float()
 				
 				# Extract image embeddings (frozen)
-				with torch.no_grad():
-					image_embeds = model.encode_image(images) # [B, embed_dim]
+				with torch.no_grad(), torch.amp.autocast(
+					device_type=torch.device(device).type,
+					enabled=torch.cuda.is_available(),
+					dtype=amp_dtype,
+				):
+					image_embeds = model.encode_image(images).float() # [B, embed_dim]
 					image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 
 			optimizer.zero_grad(set_to_none=True)
 			
+			# Run linear probe head in FP32 to avoid BF16/FP16 quantization on small per-class BCE gradients
 			with torch.amp.autocast(
-				device_type=device.type, 
-				enabled=torch.cuda.is_available(),
+				device_type=torch.device(device).type, 
+				enabled=use_probe_amp,
 				dtype=amp_dtype,
 			):
-				# logits = image_embeds @ W.T + b 
+				# logits = (image_embeds @ W.T + b) / temperature
 				logits = probe.probe(image_embeds) / temperature # [B, num_classes]
 
 				# Apply pos_weight BCE, mask zero-count classes
@@ -588,17 +630,16 @@ def probe_multi_label(
 			scaler.unscale_(optimizer)
 			if bidx % max(5, int(print_every * 0.07)) == 0 or bidx + 1 == len(data_iter):
 				label_gradients = probe.weight.grad # [num_classes, embed_dim]
-				# print(
-				# 	label_gradients.shape, 							# [num_classes, embed_dim]
-				# 	label_gradients.norm(dim=0).shape,	# [embed_dim] 
-				# 	label_gradients.norm(dim=1).shape 	# [num_classes]
-				# )
+				bias_gradients = probe.bias.grad    # [num_classes]
 				label_gradients_per_class_norm = label_gradients.norm(dim=1) # [num_classes]
+				inact_w_grad_max = label_gradients_per_class_norm[~active_mask].max().item() if (~active_mask).any() else 0.0
+				b_grad_abs = bias_gradients.abs() if bias_gradients is not None else torch.zeros_like(label_gradients_per_class_norm)
 				print(
-					f"\t\t[GRAD] b{bidx+1:6d} {label_gradients.shape} NORM_per_class: {label_gradients_per_class_norm.shape} "
-					f"(min, max): ({label_gradients_per_class_norm.min().item():.4f}, {label_gradients_per_class_norm.max().item():.4f}) "
-					f"μ±σ: {label_gradients_per_class_norm.mean():.4f} ± {label_gradients_per_class_norm.std():.4f} "
-					f"argmax: {label_gradients_per_class_norm.argmax().item()}"
+					f"\t\t[GRAD] b{bidx+1:6d} W_grad_norm(active): "
+					f"(min, max)=({label_gradients_per_class_norm[active_mask].min().item():.2e}, {label_gradients_per_class_norm[active_mask].max().item():.2e}) "
+					f"μ={label_gradients_per_class_norm[active_mask].mean().item():.2e} | "
+					f"b_grad(active): max={b_grad_abs[active_mask].max().item():.2e} μ={b_grad_abs[active_mask].mean().item():.2e} | "
+					f"inactive_max={inact_w_grad_max:.1e}"
 				)
 
 			torch.nn.utils.clip_grad_norm_(probe.parameters(), max_norm=1.0)
@@ -616,39 +657,77 @@ def probe_multi_label(
 		# Calculate average losses
 		avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
 		training_losses.append(avg_loss)
-		learning_rates_history.append([g['lr'] for g in optimizer.param_groups])
-		weight_decays_history.append([g['weight_decay'] for g in optimizer.param_groups])
+		learning_rates_history.append(optimizer.param_groups[0]['lr'])
+		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
 
 		with torch.no_grad():
-			W_init = probe._W_init
-			W = probe.weight.data
-			b = probe.bias.data
+			W_init = probe._W_init.float()
+			b_init = probe._b_init.float() if hasattr(probe, "_b_init") and probe._b_init.numel() > 0 else torch.zeros_like(probe.bias.data).float()
+			W = probe.weight.data.float()
+			b = probe.bias.data.float()
 
 			W_label_norms = W.norm(dim=1)
 			W_init_label_norms = W_init.norm(dim=1)
+			b_drift = (b - b_init).abs()
 
 			cos_W_vs_Winit = torch.nn.functional.cosine_similarity(W, W_init, dim=1)
-			# Split drift by active vs inactive to confirm the partition
-			cos_active   = cos_W_vs_Winit[active_mask]
-			cos_inactive = cos_W_vs_Winit[~active_mask]
+			active_head_mask = head_mask & active_mask
+			active_rare_mask = rare_mask & active_mask
+			inactive_mask = ~active_mask
 
-			print(f"\n[W DRIFT] W_init: {W_init.shape} W: {W.shape} b: {b.shape}")
-			print(f"  b                    (min, max): ({b.min():.4f}, {b.max():.4f}) μ±σ: {b.mean():.4f} ± {b.std():.4f}")
-			print(f"  W_init_label_norms   {W_init_label_norms.shape} (min, max): ({W_init_label_norms.min():.4f}, {W_init_label_norms.max():.4f}) μ±σ: {W_init_label_norms.mean():.4f} ± {W_init_label_norms.std():.4f}")
-			print(f"  W_label_norms        {W_label_norms.shape} (min, max): ({W_label_norms.min():.4f}, {W_label_norms.max():.4f}) μ±σ: {W_label_norms.mean():.4f} ± {W_label_norms.std():.4f}")
-			print(f"  cos(W, W_init)       {cos_W_vs_Winit.shape} (min, max): ({cos_W_vs_Winit.min():.4f}, {cos_W_vs_Winit.max():.4f}) μ±σ: {cos_W_vs_Winit.mean():.4f} ± {cos_W_vs_Winit.std():.4f}")
-			print(f"  cos | ACTIVE   (n={cos_active.numel():5d}) μ±σ: {cos_active.mean():.4f} ± {cos_active.std():.4f}")
-			print(f"  cos | INACTIVE (n={cos_inactive.numel():5d}) μ±σ: {cos_inactive.mean():.4f} ± {cos_inactive.std():.4f}")
-			# how many classes have a negative cosine similarity (an angle greater than 90 degrees)
-			print(f"  cos(W, W_init) < 0.0 : {(cos_W_vs_Winit < 0).sum().item()} / {W.shape[0]}")
-			# how many classes have drifted more than 60 degrees away from their original semantic anchor:
-			print(f"  cos(W, W_init) < 0.5 : {(cos_W_vs_Winit < 0.5).sum().item()} / {W.shape[0]}")
+			cos_active   = cos_W_vs_Winit[active_mask]
+			cos_head     = cos_W_vs_Winit[active_head_mask]
+			cos_rare     = cos_W_vs_Winit[active_rare_mask]
+			cos_inactive = cos_W_vs_Winit[inactive_mask]
+
+			print(f"\n[W & b DRIFT — Epoch {epoch+1}] W_init: {tuple(W_init.shape)} W: {tuple(W.shape)} b: {tuple(b.shape)}")
+			print(f"  b | ALL      (n={b.numel():5d}) (min, max): ({b.min():.4f}, {b.max():.4f}) μ±σ: {b.mean():.4f} ± {b.std():.4f}")
+			print(f"  b | ACTIVE   (n={active_mask.sum().item():5d}) (min, max): ({b[active_mask].min():.4f}, {b[active_mask].max():.4f}) μ±σ: {b[active_mask].mean():.4f} ± {b[active_mask].std():.4f} | mean|Δb|={b_drift[active_mask].mean():.4f}")
+			if active_head_mask.any():
+				print(f"  b | HEAD     (n={active_head_mask.sum().item():5d}) (min, max): ({b[active_head_mask].min():.4f}, {b[active_head_mask].max():.4f}) μ±σ: {b[active_head_mask].mean():.4f} ± {b[active_head_mask].std():.4f} | mean|Δb|={b_drift[active_head_mask].mean():.4f}")
+			if active_rare_mask.any():
+				print(f"  b | RARE     (n={active_rare_mask.sum().item():5d}) (min, max): ({b[active_rare_mask].min():.4f}, {b[active_rare_mask].max():.4f}) μ±σ: {b[active_rare_mask].mean():.4f} ± {b[active_rare_mask].std():.4f} | mean|Δb|={b_drift[active_rare_mask].mean():.4f}")
+			if inactive_mask.any():
+				print(f"  b | INACTIVE (n={inactive_mask.sum().item():5d}) (min, max): ({b[inactive_mask].min():.4f}, {b[inactive_mask].max():.4f}) | max|Δb|={b_drift[inactive_mask].max():.2e}")
+			print(f"  ||W|| | ACTIVE   (min, max): ({W_label_norms[active_mask].min():.4f}, {W_label_norms[active_mask].max():.4f}) μ±σ: {W_label_norms[active_mask].mean():.4f} ± {W_label_norms[active_mask].std():.4f}")
+			if active_head_mask.any():
+				print(f"  ||W|| | HEAD     (min, max): ({W_label_norms[active_head_mask].min():.4f}, {W_label_norms[active_head_mask].max():.4f}) μ±σ: {W_label_norms[active_head_mask].mean():.4f} ± {W_label_norms[active_head_mask].std():.4f}")
+			if active_rare_mask.any():
+				print(f"  ||W|| | RARE     (min, max): ({W_label_norms[active_rare_mask].min():.4f}, {W_label_norms[active_rare_mask].max():.4f}) μ±σ: {W_label_norms[active_rare_mask].mean():.4f} ± {W_label_norms[active_rare_mask].std():.4f}")
+			if inactive_mask.any():
+				print(f"  ||W|| | INACTIVE (min, max): ({W_label_norms[inactive_mask].min():.4f}, {W_label_norms[inactive_mask].max():.4f}) μ±σ: {W_label_norms[inactive_mask].mean():.4f} ± {W_label_norms[inactive_mask].std():.4f}")
+			print(f"  cos(W, W_init) | ACTIVE   (n={cos_active.numel():5d}) μ±σ: {cos_active.mean():.4f} ± {cos_active.std():.4f} (min={cos_active.min():.4f})")
+			if cos_head.numel() > 0:
+				print(f"  cos(W, W_init) | HEAD     (n={cos_head.numel():5d}) μ±σ: {cos_head.mean():.4f} ± {cos_head.std():.4f} | <0.0: {(cos_head < 0).sum().item()} | <0.5: {(cos_head < 0.5).sum().item()}")
+			if cos_rare.numel() > 0:
+				print(f"  cos(W, W_init) | RARE     (n={cos_rare.numel():5d}) μ±σ: {cos_rare.mean():.4f} ± {cos_rare.std():.4f} | <0.0: {(cos_rare < 0).sum().item()} | <0.5: {(cos_rare < 0.5).sum().item()}")
+			if cos_inactive.numel() > 0:
+				print(f"  cos(W, W_init) | INACTIVE (n={cos_inactive.numel():5d}) μ±σ: {cos_inactive.mean():.4f} ± {cos_inactive.std():.4f}")
+			print(f"  cos(W, W_init) < 0.0 : {(cos_W_vs_Winit < 0).sum().item()} / {W.shape[0]} (active: {(cos_active < 0).sum().item()} / {cos_active.numel()})")
+			print(f"  cos(W, W_init) < 0.5 : {(cos_W_vs_Winit < 0.5).sum().item()} / {W.shape[0]} (active: {(cos_active < 0.5).sum().item()} / {cos_active.numel()})")
+
+			if mean_train_img_dir is not None:
+				cos_W_vs_mean_img = torch.nn.functional.cosine_similarity(W, mean_train_img_dir.expand_as(W), dim=1)
+				head_anti = f"{cos_W_vs_mean_img[active_head_mask].mean():.4f}" if active_head_mask.any() else "N/A"
+				rare_anti = f"{cos_W_vs_mean_img[active_rare_mask].mean():.4f}" if active_rare_mask.any() else "N/A"
+				inact_anti = f"{cos_W_vs_mean_img[inactive_mask].mean():.4f}" if inactive_mask.any() else "N/A"
+				print(
+					f"  cos(W, u_xbar) [anti-mean check] | "
+					f"HEAD: {head_anti} | "
+					f"RARE: {rare_anti} | "
+					f"INACTIVE: {inact_anti} "
+					f"(strongly negative ≈ -0.8 indicates anti-mean collapse)"
+				)
 
 		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")	
 
 		probe.probe.eval()
 		val_loss = 0.0
-		val_preds_list, val_labels_list = list(), list()
+		val_preds_active_list, val_labels_active_list = list(), list()
+		val_pos_logit_sum, val_pos_logit_sq_sum, val_pos_count, val_pos_gt0 = 0.0, 0.0, 0, 0
+		val_neg_logit_sum, val_neg_logit_sq_sum, val_neg_count, val_neg_gt0 = 0.0, 0.0, 0, 0
+		val_inact_fp_count, val_inact_total = 0, 0
+		val_inact_logit_max = float("-inf")
 		
 		with torch.no_grad():
 			val_iter = val_feature_loader if cache_features else validation_loader
@@ -656,7 +735,7 @@ def probe_multi_label(
 			for batch_data in val_iter:
 				if cache_features:
 					image_embeds, label_vectors = batch_data
-					image_embeds = image_embeds.to(device, non_blocking=True)
+					image_embeds = image_embeds.to(device, non_blocking=True).float()
 					label_vectors = label_vectors.to(device, non_blocking=True).float()
 				else:
 					images, _, label_vectors = batch_data										
@@ -664,28 +743,63 @@ def probe_multi_label(
 					label_vectors = label_vectors.to(device, non_blocking=True).float()
 					
 					# Extract features
-					image_embeds = model.encode_image(images)
-					image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
+					with torch.amp.autocast(
+						device_type=torch.device(device).type,
+						enabled=torch.cuda.is_available(),
+						dtype=amp_dtype,
+					):
+						image_embeds = model.encode_image(images).float()
+						image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 				
-				# Get predictions from probe [Validation]
+				# Get predictions from probe [Validation] in FP32
 				logits = probe.probe(image_embeds) / temperature
 
 				loss_raw = criterion(logits, label_vectors)
 				val_loss += loss_raw[:, active_mask].mean().item()
-				val_preds_list.append((torch.sigmoid(logits) > 0.5).float().cpu())
-				val_labels_list.append(label_vectors.cpu())
+
+				# Track active-class predictions & logit separation diagnostics
+				logits_active = logits[:, active_mask]
+				labels_active = label_vectors[:, active_mask]
+				preds_active = (torch.sigmoid(logits_active) > 0.5).float()
+				val_preds_active_list.append(preds_active.cpu())
+				val_labels_active_list.append(labels_active.cpu())
+
+				pos_m = labels_active > 0.5
+				neg_m = ~pos_m
+				if pos_m.any():
+					lp = logits_active[pos_m]
+					val_pos_logit_sum += lp.sum().item()
+					val_pos_logit_sq_sum += (lp * lp).sum().item()
+					val_pos_count += lp.numel()
+					val_pos_gt0 += (lp > 0).sum().item()
+				if neg_m.any():
+					ln = logits_active[neg_m]
+					val_neg_logit_sum += ln.sum().item()
+					val_neg_logit_sq_sum += (ln * ln).sum().item()
+					val_neg_count += ln.numel()
+					val_neg_gt0 += (ln > 0).sum().item()
+				if (~active_mask).any():
+					logits_inact = logits[:, ~active_mask]
+					val_inact_fp_count += (logits_inact > 0).sum().item()
+					val_inact_total += logits_inact.numel()
+					val_inact_logit_max = max(val_inact_logit_max, logits_inact.max().item())
 		
 		avg_val_loss = val_loss / len(val_iter)
 		validation_losses.append(avg_val_loss)
 
-		# Calculate multi-label metrics
-		val_preds = torch.cat(val_preds_list, dim=0)
-		val_labels = torch.cat(val_labels_list, dim=0)
+		# Calculate multi-label classification metrics on ACTIVE classes only
+		val_preds = torch.cat(val_preds_active_list, dim=0)
+		val_labels = torch.cat(val_labels_active_list, dim=0)
 		
 		hamming = hamming_loss(val_labels.numpy(), val_preds.numpy())
 		f1 = f1_score(val_labels.numpy(), val_preds.numpy(), average='weighted', zero_division=0)
 		exact_match = (val_preds == val_labels).all(dim=1).float().mean().item()
 		partial_match = (val_preds == val_labels).float().mean().item()
+
+		pos_mean = val_pos_logit_sum / max(val_pos_count, 1)
+		pos_std = max(0.0, (val_pos_logit_sq_sum / max(val_pos_count, 1)) - pos_mean ** 2) ** 0.5
+		neg_mean = val_neg_logit_sum / max(val_neg_count, 1)
+		neg_std = max(0.0, (val_neg_logit_sq_sum / max(val_neg_count, 1)) - neg_mean ** 2) ** 0.5
 
 		epoch_metrics = {
 			"val_loss":       avg_val_loss,
@@ -698,45 +812,54 @@ def probe_multi_label(
 		full_val_loss_acc_metrics_all_epochs.append(epoch_metrics)
 
 		if cache_features:
-			sample_feats = train_feats[:512].to(device)        # [512, 768] image features
-			# Get true class indices for these 512 samples from the loader
-			# For each sample, average the W rows corresponding to its true labels
-			sample_labels = train_lbls[:512].to(device)  # [512, C] multi-hot
-			
-			# W = torch.nn.functional.normalize(probe.probe.weight, dim=-1) # [C, 768]
-			W = torch.nn.functional.normalize(probe.weight, dim=-1) # [C, emb_dim]
-			matched_class_vecs = torch.zeros(512, W.shape[1], device=device)
+			with torch.no_grad():
+				sample_feats = val_feats[:512].to(device).float()     # [512, 768] val image features
+				sample_labels = val_lbls[:512].to(device).float()     # [512, C] multi-hot
+				
+				W_norm = torch.nn.functional.normalize(probe.weight.float(), dim=-1) # [C, emb_dim]
+				matched_class_vecs = torch.zeros(sample_feats.shape[0], W_norm.shape[1], device=device)
 
-			for i in range(512):
-				pos_idx = sample_labels[i].nonzero(as_tuple=True)[0]
-				if pos_idx.numel() > 0:
-					matched_class_vecs[i] = W[pos_idx].mean(dim=0)
-			
-			matched_class_vecs = torch.nn.functional.normalize(matched_class_vecs, dim=-1)
-			sample_feats_norm = torch.nn.functional.normalize(sample_feats, dim=-1)
-			cos_sim = torch.nn.functional.cosine_similarity(
-				sample_feats_norm, 
-				matched_class_vecs, 
-				dim=1
-			).mean().item()
+				for i in range(sample_feats.shape[0]):
+					pos_idx = sample_labels[i].nonzero(as_tuple=True)[0]
+					if pos_idx.numel() > 0:
+						matched_class_vecs[i] = W_norm[pos_idx].mean(dim=0)
+				
+				matched_class_vecs = torch.nn.functional.normalize(matched_class_vecs, dim=-1)
+				sample_feats_norm = torch.nn.functional.normalize(sample_feats, dim=-1)
+				cos_sim = torch.nn.functional.cosine_similarity(
+					sample_feats_norm, 
+					matched_class_vecs, 
+					dim=1
+				).mean().item()
+
+				# Quick probe-logit Top-5 hit rate on active classes (tracks actual classifier ranking)
+				sample_logits = (probe.probe(sample_feats) / temperature)
+				sample_logits[:, ~active_mask] = float("-inf")
+				eff_k5 = min(5, max(int(active_mask.sum().item()), 1))
+				top5_idx = sample_logits.topk(eff_k5, dim=1).indices
+				top5_mask = torch.zeros_like(sample_logits, dtype=torch.bool).scatter_(1, top5_idx, True)
+				val_sample_hit5 = (top5_mask & sample_labels.bool()).any(dim=1).float().mean().item()
 		else:
-			cos_sim = 0
+			cos_sim = None
+			val_sample_hit5 = None
 		
 		print(
 			f"\nEpoch {epoch+1}:\n"
-			f"  [LOSS] {mode.upper()} — Train: {avg_loss} Val: {avg_val_loss}\n"
-			f"  Hamming Loss: {hamming:.4f}\n"
-			f"  F1 Score: {f1:.4f}\n"
-			f"  ExactMatch: {exact_match} PartialAcc: {partial_match:.4f}\n"
+			f"  [LOSS] {mode.upper()} — Train: {avg_loss:.6f} Val: {avg_val_loss:.6f}\n"
+			f"  [VAL ACTIVE ({active_mask.sum().item():,} cls)] "
+			f"Hamming: {hamming:.6f} | Weighted F1: {f1:.4f} | ExactMatch: {exact_match:.4f} | PartialAcc: {partial_match:.6f}\n"
+			f"  [VAL LOGITS] pos(y=1): μ±σ={pos_mean:+.3f}±{pos_std:.3f} (frac>0: {val_pos_gt0/max(val_pos_count,1):.3f}) | "
+			f"neg(y=0,active): μ±σ={neg_mean:+.3f}±{neg_std:.3f} (frac>0: {val_neg_gt0/max(val_neg_count,1):.5f})\n"
+			f"  [VAL INACTIVE] FP(>0): {val_inact_fp_count}/{val_inact_total} | max_logit: {val_inact_logit_max:.3f}\n"
 			f"  LR: {scheduler.get_last_lr()}"
 		)
 
 		if cos_sim is not None:
-			print(f"  CosSim (W): {cos_sim:.4f}")
+			print(f"  Val CosSim (W): {cos_sim:.4f} | Val Probe-Logit Hit@5 (512-sample): {val_sample_hit5:.4f}")
 		
 		if early_stopping.should_stop(
 			current_value=avg_val_loss,
-			model=probe, # full MultiLabelProbe: saves {probe.weight, probe.bias, clip_model.*}
+			model=probe, # saves probe head {weight, bias}
 			epoch=epoch,
 			optimizer=optimizer,
 			scheduler=scheduler,
@@ -752,13 +875,12 @@ def probe_multi_label(
 	print(f"Total Training Time: {time.time() - train_start_time:.1f} sec")
 	
 	# Final evaluation
-	# pass probe (not model) — probe.encode_image and probe.encode_text
-	# delegate to frozen CLIP, so get_validation_metrics works correctly.
-	# The probe's W matrix is now the fine-tuned one; similarity is computed
-	# as probe.encode_image(img) @ probe.encode_text(class).T, which is
-	# equivalent to image_embed @ W.T since W was initialised from text embeds.
+	# Pass probe (not model) with use_probe_logits=True so evaluate_best_model()
+	# reloads the best checkpoint first and then scores exact trained probe logits
+	# (x @ W.T + b) / temperature — preserving learned weight norms and biases,
+	# and masking untrained inactive classes in Alignment Score & full-set metrics.
 	best_model_eval_results = evaluate_best_model(
-		model=probe, # not model — probe wraps model with trained W
+		model=probe, # wraps frozen CLIP + trained linear head (W, b)
 		validation_loader=validation_loader,
 		active_mask=active_mask,
 		head_mask=head_mask,
@@ -770,7 +892,8 @@ def probe_multi_label(
 		cache_dir=results_dir,
 		topk_values=topk_values,
 		temperature=temperature,
-		class_embeds_override=probe.weight.detach().clone(),
+		class_embeds_override=None,
+		use_probe_logits=True,
 		use_fixed_masks=True,
 		tier_spec_path=tier_spec_path,
 		verbose=verbose,
@@ -783,6 +906,7 @@ def probe_multi_label(
 		actual_epochs=actual_trained_epochs
 	)
 
+	probe_trainable_params = sum(p.numel() for p in probe.parameters() if p.requires_grad)
 	print_final_evaluation_summary(
 		mode=mode,
 		model_arch=model_arch,
@@ -792,6 +916,10 @@ def probe_multi_label(
 		mdl_fpth=mdl_fpth,
 		pw_mode=pw_mode,
 		eval_results=best_model_eval_results,
+		extra_lines=[
+			f"Probe trainable params: {probe_trainable_params:,} ({probe.probe_type}, temp={temperature})",
+			"Scoring: exact probe logits (x @ W.T + b) / temp [T2I = closed-set logit transpose, not open-vocab]",
+		],
 		verbose=verbose,
 	)
 

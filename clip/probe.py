@@ -425,8 +425,9 @@ class MultiLabelProbe(torch.nn.Module):
 			self.probe = torch.nn.Linear(self.input_dim, num_classes)
 			self.probe_type = "Linear"
 
-		# Register as a buffer so it moves with .to(device)
+		# Register as buffers so they move with .to(device)
 		self.register_buffer('_W_init', torch.empty(0))
+		self.register_buffer('_b_init', torch.empty(0))
 
 		# Step 4: Initialize probe weights for multi-label
 		if zero_shot_init:
@@ -573,24 +574,28 @@ class MultiLabelProbe(torch.nn.Module):
 			print("Initializing multi-label probe with zero-shot CLIP embeddings...")
 
 		with torch.no_grad():
-			w_norms = self.probe.weight.data.norm(dim=1)
+			w_norms = self.weight.data.norm(dim=1)
 			print(f"[INIT] W norms (min, max): ({w_norms.min():.4f}, {w_norms.max():.4f}) μ±σ: {w_norms.mean():.4f} ± {w_norms.std():.4f}")
 
 		try:
-			# Tokenize class names
-			class_texts = clip.tokenize(self.class_names).to(self.device)
-			
-			# Get CLIP text embeddings
+			# Get CLIP text embeddings in chunks to avoid OOM on large vocabularies
+			text_chunks = []
+			chunk_size = 512
 			with torch.no_grad():
 				self.clip_model.eval()
-				class_embeds = self.clip_model.encode_text(class_texts)
-				class_embeds = torch.nn.functional.normalize(class_embeds, dim=-1)
+				for i in range(0, len(self.class_names), chunk_size):
+					batch_names = self.class_names[i:i + chunk_size]
+					batch_texts = clip.tokenize(batch_names).to(self.device)
+					batch_embeds = self.clip_model.encode_text(batch_texts).float()
+					batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
+					text_chunks.append(batch_embeds)
+				class_embeds = torch.cat(text_chunks, dim=0)
 
 			# Initialize based on probe type
 			if self.probe_type == "Linear":
 				# For multi-label, use scaled initialization (less aggressive than single-label)
 				with torch.no_grad():
-					self.probe.weight.data = class_embeds.clone()
+					self.probe.weight.data = class_embeds.clone().to(self.probe.weight.dtype)
 					self.probe.bias.data.zero_()
 				
 				if self.verbose:
@@ -601,7 +606,7 @@ class MultiLabelProbe(torch.nn.Module):
 				if class_embeds.shape[1] == final_layer.weight.shape[1]:
 					# Direct initialization if dimensions match (scaled for multi-label)
 					with torch.no_grad():
-						final_layer.weight.data = class_embeds.clone() * 0.05  # Even more conservative
+						final_layer.weight.data = (class_embeds.clone() * 0.05).to(final_layer.weight.dtype)  # Even more conservative
 						final_layer.bias.data.zero_()
 				else:
 					# Scaled initialization if dimensions don't match
@@ -612,12 +617,10 @@ class MultiLabelProbe(torch.nn.Module):
 				if self.verbose:
 					print(f"[OK] {self.probe_type} final layer initialized for multi-label")
 
-			# Store W_init AFTER successful zero-shot initialization
+			# Store W_init and b_init AFTER successful zero-shot initialization
 			with torch.no_grad():
-				if self.probe_type == "MLP":
-					self._W_init = self.probe[-1].weight.data.clone()
-				else:
-					self._W_init = self.probe.weight.data.clone()
+				self._W_init = self.weight.data.clone()
+				self._b_init = self.bias.data.clone()
 
 				w_norms_post = self._W_init.norm(dim=1)
 
@@ -631,10 +634,107 @@ class MultiLabelProbe(torch.nn.Module):
 				print(f"<!> Zero-shot initialization failed: {e} => Using default random initialization")
 			# Fallback: save the random init as baseline
 			with torch.no_grad():
-				if self.probe_type == "MLP":
-					self._W_init = self.probe[-1].weight.data.clone()
-				else:
-					self._W_init = self.probe.weight.data.clone()
+				self._W_init = self.weight.data.clone()
+				self._b_init = self.bias.data.clone()
+
+	@torch.no_grad()
+	def init_bias_from_priors(
+		self,
+		train_freq: torch.Tensor,
+		pos_weight: torch.Tensor,
+		num_samples: int,
+		active_mask: Optional[torch.Tensor] = None,
+		head_mask: Optional[torch.Tensor] = None,
+		rare_mask: Optional[torch.Tensor] = None,
+		inactive_bias: float = -20.0,
+		clamp_range: Tuple[float, float] = (-20.0, 20.0),
+		verbose: bool = True,
+	) -> torch.Tensor:
+		"""
+		Initialize multi-label probe bias to the weighted-BCE equilibrium log-odds:
+			b_c^(0) = log( (w_c * f_c) / max(N - f_c, 1) )   for active classes (f_c > 0)
+			b_c^(0) = inactive_bias                           for inactive classes (f_c == 0)
+
+		Why this is critical for AdamW + BCE with many rare classes:
+		Starting at b = 0 sets initial sigmoid(logit) ~ 0.55 on 99.9% negative labels.
+		Under AdamW, 768-dim weight rows W_c lower logits ~20x faster per step than the
+		1-dim scalar bias b_c, causing W_c to absorb the negative class prior (-alpha * mean_x)
+		on Epoch 1 and collapse rare-class directions. Initializing b_c to the prior
+		equilibrium zeroes out the step-0 negative gradient wave so W_c stays clean.
+		"""
+		bias_param = self.bias
+		target_device = bias_param.device
+		target_dtype = bias_param.dtype
+
+		freq = train_freq.to(device=target_device, dtype=torch.float32)
+		pw = pos_weight.to(device=target_device, dtype=torch.float32)
+		if active_mask is None:
+			active = freq > 0
+		else:
+			active = active_mask.to(device=target_device, dtype=torch.bool)
+
+		neg_count = (float(num_samples) - freq).clamp(min=1.0)
+		pos_eff = (pw * freq).clamp(min=1e-12)
+		prior_logits = torch.log(pos_eff / neg_count).clamp(min=clamp_range[0], max=clamp_range[1])
+
+		new_bias = torch.where(
+			active,
+			prior_logits,
+			torch.full_like(prior_logits, float(inactive_bias)),
+		)
+
+		bias_param.data.copy_(new_bias.to(dtype=target_dtype))
+		self._b_init = bias_param.data.clone()
+
+		if verbose:
+			b_all = bias_param.data.float()
+			b_active = b_all[active]
+			b_inactive = b_all[~active]
+			p_active = torch.sigmoid(b_active)
+			p_inactive = torch.sigmoid(b_inactive)
+
+			print(f"\n[PROBE BIAS PRIOR INIT] (weighted-BCE equilibrium, N={num_samples:,})")
+			print(
+				f"  ├─ ALL      (n={b_all.numel():5d}) "
+				f"(min, max): ({b_all.min().item():.4f}, {b_all.max().item():.4f}) "
+				f"μ±σ: {b_all.mean().item():.4f} ± {b_all.std().item():.4f}"
+			)
+			if b_active.numel() > 0:
+				print(
+					f"  ├─ ACTIVE   (n={b_active.numel():5d}) "
+					f"(min, max): ({b_active.min().item():.4f}, {b_active.max().item():.4f}) "
+					f"μ±σ: {b_active.mean().item():.4f} ± {b_active.std().item():.4f} "
+					f"(median: {b_active.median().item():.4f}) | mean σ(b): {p_active.mean().item():.6f}"
+				)
+			if head_mask is not None:
+				hm = (head_mask.to(target_device) & active)
+				if hm.any():
+					b_head = b_all[hm]
+					print(
+						f"  ├─ HEAD     (n={b_head.numel():5d}) "
+						f"(min, max): ({b_head.min().item():.4f}, {b_head.max().item():.4f}) "
+						f"μ±σ: {b_head.mean().item():.4f} ± {b_head.std().item():.4f} "
+						f"(median: {b_head.median().item():.4f})"
+					)
+			if rare_mask is not None:
+				rm = (rare_mask.to(target_device) & active)
+				if rm.any():
+					b_rare = b_all[rm]
+					print(
+						f"  ├─ RARE     (n={b_rare.numel():5d}) "
+						f"(min, max): ({b_rare.min().item():.4f}, {b_rare.max().item():.4f}) "
+						f"μ±σ: {b_rare.mean().item():.4f} ± {b_rare.std().item():.4f} "
+						f"(median: {b_rare.median().item():.4f})"
+					)
+			if b_inactive.numel() > 0:
+				print(
+					f"  └─ INACTIVE (n={b_inactive.numel():5d}) "
+					f"value: {b_inactive.mean().item():.4f} | max σ(b): {p_inactive.max().item():.2e}"
+				)
+			else:
+				print(f"  └─ INACTIVE (n=    0)")
+
+		return bias_param.data
 
 
 
