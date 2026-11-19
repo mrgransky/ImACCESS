@@ -4,6 +4,7 @@
 # Usage:
 # 		python aggregate_metrics.py seed_1.json seed_2.json seed_42.json
 # 		python aggregate_metrics.py /home/farid/datasets/WW_DATASETs/HISTORY_X4/outputs/seed_1_performance.json /home/farid/datasets/WW_DATASETs/HISTORY_X4/outputs/seed_2_performance.json /home/farid/datasets/WW_DATASETs/HISTORY_X4/outputs/seed_42_performance.json
+# 		python aggregate_metrics.py /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/outputs/seed_1_performance.json /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/outputs/seed_2_performance.json /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/outputs/seed_42_performance.json
 
 
 # Output:
@@ -681,12 +682,7 @@ def main():
 			print_table6_row(lt, summary_dict, lt)
 
 
-	SEEDS_DIR = "/home/farid/datasets/WW_DATASETs/HISTORY_X4/outputs"
-	seed_json_paths = [
-		os.path.join(SEEDS_DIR, "seed_1_performance.json"),
-		os.path.join(SEEDS_DIR, "seed_2_performance.json"),
-		os.path.join(SEEDS_DIR, "seed_42_performance.json"),
-	]
+	seed_json_paths = file_paths
 
 	for stg in STRATEGIES:
 		diagnose_table6_metric_coverage(
@@ -710,6 +706,7 @@ def main():
 			strategy="dora",
 			metric="mAP",
 			k="10",
+			expected_n_seeds=len(seed_json_paths),
 			allow_incomplete=True,          # TEMPORARY preview mode
 	)
 
