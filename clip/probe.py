@@ -646,21 +646,24 @@ class MultiLabelProbe(torch.nn.Module):
 		active_mask: Optional[torch.Tensor] = None,
 		head_mask: Optional[torch.Tensor] = None,
 		rare_mask: Optional[torch.Tensor] = None,
-		inactive_bias: float = -20.0,
-		clamp_range: Tuple[float, float] = (-20.0, 20.0),
+		inactive_bias: Optional[float] = None,
+		inactive_margin: float = 10.0,
+		inactive_floor: float = -20.0,
+		clamp_range: Tuple[float, float] = (-50.0, 50.0),
 		verbose: bool = True,
 	) -> torch.Tensor:
 		"""
 		Initialize multi-label probe bias to the weighted-BCE equilibrium log-odds:
 			b_c^(0) = log( (w_c * f_c) / max(N - f_c, 1) )   for active classes (f_c > 0)
-			b_c^(0) = inactive_bias                           for inactive classes (f_c == 0)
+			b_c^(0) = resolved_inactive_bias                  for inactive classes (f_c == 0)
 
-		Why this is critical for AdamW + BCE with many rare classes:
-		Starting at b = 0 sets initial sigmoid(logit) ~ 0.55 on 99.9% negative labels.
-		Under AdamW, 768-dim weight rows W_c lower logits ~20x faster per step than the
-		1-dim scalar bias b_c, causing W_c to absorb the negative class prior (-alpha * mean_x)
-		on Epoch 1 and collapse rare-class directions. Initializing b_c to the prior
-		equilibrium zeroes out the step-0 negative gradient wave so W_c stays clean.
+		When inactive_bias is None (adaptive default), resolved_inactive_bias is derived
+		from the dataset's own active prior floor:
+			max(-80.0, min(inactive_floor, min_active_bias - inactive_margin))
+		This guarantees:
+		  - On small/medium datasets: <= -20.0 so sigmoid(x @ W_init + b) < 1e-8 (zero FP).
+		  - On very large datasets: strictly `inactive_margin` nats below the rarest active class.
+		  - Always finite and FP32/BF16-safe for AdamW (unlike -inf, which can produce NaN).
 		"""
 		bias_param = self.bias
 		target_device = bias_param.device
@@ -677,10 +680,28 @@ class MultiLabelProbe(torch.nn.Module):
 		pos_eff = (pw * freq).clamp(min=1e-12)
 		prior_logits = torch.log(pos_eff / neg_count).clamp(min=clamp_range[0], max=clamp_range[1])
 
+		if inactive_bias is None:
+			if active.any():
+				min_active_bias = float(prior_logits[active].min().item())
+				resolved_inactive_bias = max(
+					-80.0,
+					min(float(inactive_floor), min_active_bias - float(inactive_margin)),
+				)
+				inactive_source = (
+					f"adaptive: max(-80.0, min({inactive_floor:.1f}, "
+					f"min_active({min_active_bias:.4f}) - {inactive_margin:.1f}))"
+				)
+			else:
+				resolved_inactive_bias = float(inactive_floor)
+				inactive_source = f"adaptive fallback (no active classes): {inactive_floor:.1f}"
+		else:
+			resolved_inactive_bias = float(inactive_bias)
+			inactive_source = "explicit override"
+
 		new_bias = torch.where(
 			active,
 			prior_logits,
-			torch.full_like(prior_logits, float(inactive_bias)),
+			torch.full_like(prior_logits, resolved_inactive_bias),
 		)
 
 		bias_param.data.copy_(new_bias.to(dtype=target_dtype))
@@ -729,7 +750,7 @@ class MultiLabelProbe(torch.nn.Module):
 			if b_inactive.numel() > 0:
 				print(
 					f"  └─ INACTIVE (n={b_inactive.numel():5d}) "
-					f"value: {b_inactive.mean().item():.4f} | max σ(b): {p_inactive.max().item():.2e}"
+					f"value: {b_inactive.mean().item():.4f} ({inactive_source}) | max σ(b): {p_inactive.max().item():.2e}"
 				)
 			else:
 				print(f"  └─ INACTIVE (n=    0)")
@@ -773,13 +794,11 @@ class MultiLabelProbe(torch.nn.Module):
 		# Buffer registration check
 		w_init_ok = hasattr(self, '_W_init') and self._W_init.numel() > 0
 
-		sep = "═" * 72
-		print(f"\n{sep}")
-		print(f"  🔍 ROBUST MULTI-LABEL PROBE — INITIALIZATION SUMMARY")
-		print(f"{sep}")
+		print("="*70)
+		print(f"ROBUST MULTI-LABEL PROBE — INITIALIZATION SUMMARY")
 
 		# ── Architecture ─────────────────────────────────────────────────────
-		print(f"\n📦 ARCHITECTURE")
+		print(f"\nARCHITECTURE")
 		print(f"     Base model      : {getattr(self.clip_model, 'name', 'Unknown CLIP')}")
 		print(f"     Probe type      : {self.probe_type}")
 		if self.probe_type == "MLP":
@@ -791,7 +810,7 @@ class MultiLabelProbe(torch.nn.Module):
 
 		# ── Parameters & Memory ──────────────────────────────────────────────
 		ratio = probe_params / total_params * 100
-		print(f"\n🧮 PARAMETERS & MEMORY  (float32 estimate)")
+		print(f"\nPARAMETERS & MEMORY  (float32 estimate)")
 		print(f"     Probe head (TRAINABLE)  : {probe_params:>12,} params │ {probe_mem_mb:>8.2f} MB │")
 		print(f"     CLIP backbone (FROZEN)  : {clip_params:>12,} params │ {clip_mem_mb:>8.2f} MB │")
 		print(f"     TOTAL                   : {total_params:>12,} params │ {(probe_mem_mb + clip_mem_mb):>8.2f} MB │")
@@ -802,7 +821,7 @@ class MultiLabelProbe(torch.nn.Module):
 		print(f"       a fixed feature extractor. No catastrophic forgetting risk.")
 
 		# ── Weight Initialization Stats ──────────────────────────────────────
-		print(f"\n⚖️  WEIGHT INITIALIZATION  (final classification layer)")
+		print(f"\nWEIGHT INITIALIZATION  (final classification layer)")
 		print(f"     Weight matrix   : shape={list(w.shape)}")
 		print(f"       mean={w_mean:>+.6f}  std={w_std:.6f}  min={w_min:>+.6f}  max={w_max:>+.6f}")
 		print(f"     Row norms       : mean={w_norms.mean():.4f}  std={w_norms.std():.4f}  "
@@ -815,19 +834,19 @@ class MultiLabelProbe(torch.nn.Module):
 			print(f"     → MLP final layer initialized (scaled ×0.05 for multi-label stability).")
 
 		# ── Safety & Isolation Checks ────────────────────────────────────────
-		print(f"\n  🛡️  SAFETY CHECKS")
-		probe_status = "✅ PASS" if probe_grad_ok else "❌ FAIL — probe params are frozen!"
-		clip_status  = "✅ PASS" if clip_frozen_ok else "❌ FAIL — CLIP is trainable!"
-		init_status  = "✅ PASS" if w_init_ok else "❌ FAIL — _W_init buffer missing!"
+		print(f"\nSAFETY CHECKS")
+		probe_status = "PASS" if probe_grad_ok else "FAIL — probe params are frozen!"
+		clip_status  = "PASS" if clip_frozen_ok else "FAIL — CLIP is trainable!"
+		init_status  = "PASS" if w_init_ok else "FAIL — _W_init buffer missing!"
 		print(f"     Probe requires_grad   : {probe_status}")
 		print(f"     CLIP fully frozen     : {clip_status}")
 		print(f"     _W_init buffer exists : {init_status}")
 
 		if not probe_grad_ok or not clip_frozen_ok or not w_init_ok:
-			print(f"\n     ⚠️  WARNING: One or more safety checks failed!")
+			print(f"\n[WARNING] One or more safety checks failed!")
 			print(f"         Training may behave unexpectedly. Review configuration.")
 
-		print(f"\n{sep}\n")
+		print("="*70)
 
 	def forward(self, x):
 		return self.probe(x)

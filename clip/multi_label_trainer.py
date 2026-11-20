@@ -394,6 +394,7 @@ def probe_multi_label(
 
 	# Initialize bias to weighted-BCE prior log-odds so step-0 negative gradients
 	# do not force AdamW to overwrite W_init with -alpha * mean(x) on Epoch 1.
+	# inactive_bias=None derives the inactive floor adaptively from min(active_bias) - margin.
 	probe.init_bias_from_priors(
 		train_freq=train_freq,
 		pos_weight=pos_weight,
@@ -401,7 +402,7 @@ def probe_multi_label(
 		active_mask=active_mask,
 		head_mask=head_mask,
 		rare_mask=rare_mask,
-		inactive_bias=-20.0,
+		inactive_bias=None,
 		verbose=verbose,
 	)
 

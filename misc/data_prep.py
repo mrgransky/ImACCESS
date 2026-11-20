@@ -654,7 +654,7 @@ def build_shared_vocab_tier_spec(
 		print(f"\n[Per-label tier table] (sorted by frequency, descending)")
 		print(f"  {'#':>3s}  {'label':<28s} {'freq':>8s}  {'head':>5s} {'rare':>5s}")
 		order = sorted_idx.tolist()
-		max_rows = 10
+		max_rows = 15
 		for rank, i in enumerate(order[:max_rows]):
 			print(
 				f"  {rank:>3d}  {intersection_labels[i]:<28s} {shared_train_freq[i].item():>8.0f}  "

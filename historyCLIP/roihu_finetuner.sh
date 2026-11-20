@@ -11,7 +11,7 @@
 #SBATCH --mem=204G
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
-#SBATCH --time=0-08:25:00
+#SBATCH --time=0-06:35:00
 ##SBATCH --begin=03:30:00
 
 ##############################################################################
@@ -70,8 +70,8 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-#SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
-##SBATCH --array=0-5 # only zero_shot and probe for debugging label similarity
+##SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
+#SBATCH --array=0-5 # only zero_shot and probe for debugging label similarity
 ##SBATCH --array=12-14 # only LoRA+
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
