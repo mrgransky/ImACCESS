@@ -246,16 +246,18 @@ def compute_tiered_retrieval_metrics(
 	active_mask: torch.Tensor,
 	use_fixed_masks: bool,
 	mode: str = "Image-to-Text",
+	class_names: Optional[List[str]] = None,
+	protocol_label: Optional[str] = None,
 	verbose: bool = False,
 ) -> Dict:
 
 	if verbose:
+		proto_tag = f" [{protocol_label}]" if protocol_label else ""
 		print("-"*80)
-		print(f"TIERD RETRIEVAL METRICS")
+		print(f"TIERD RETRIEVAL METRICS{proto_tag}")
 
 	if use_fixed_masks:
-		# R1-C shared-vocabulary benchmark: no adaptive filtering,
-		# every shared class with ≥1 positive validation instance counts.
+		# Fixed support floor: every tier class with ≥1 positive validation instance counts.
 		min_val_support = 1
 	else:
 		min_val_support = compute_adaptive_min_val_support(
@@ -268,59 +270,78 @@ def compute_tiered_retrieval_metrics(
 		)
 
 	# Per-class validation support
-	# query_labels: [N_images, C] — col sum gives per-class image count
+	# query_labels: [N_images, C] — col sum gives per-class image count in VAL
 	val_support = query_labels.sum(dim=0)  # [C]
 
 	# Supported mask — classes with sufficient validation coverage
 	# Applied to ALL tiers for consistency, not just T2I rare
 	supported_mask = val_support >= min_val_support  # [C]
 
-	if verbose:
-		print(f"  ├─ {mode.upper()}")
-		print(f"  ├─ Similarity      : {similarity_matrix.shape} {similarity_matrix.device}")
-		print(f"  ├─ Query labels    : {query_labels.shape} {query_labels.device}")
-		print(f"  ├─ use_fixed_masks : {use_fixed_masks} => min_val_support: {min_val_support}")
-		print(f"  ├─ Head mask       : {head_mask.shape} (min, max): ({head_mask.min().item():.2f}, {head_mask.max().item():.2f})")
-		print(f"  ├─ Rare mask       : {rare_mask.shape} (min, max): ({rare_mask.min().item():.2f}, {rare_mask.max().item():.2f})")
-		print(f"  ├─ Supported Mask  : {supported_mask.shape} (min, max): ({supported_mask.min().item():.2f}, {supported_mask.max().item():.2f})")
-		print(f"  └─ Active mask     : {active_mask.shape} (min, max): ({active_mask.min().item():.2f}, {active_mask.max().item():.2f})")
-
-	# Shared protocol validation
-	if use_fixed_masks and verbose:
-		shared_supported = active_mask & supported_mask
-		shared_head_supported = head_mask & active_mask & supported_mask
-		shared_rare_supported = rare_mask & active_mask & supported_mask
-
-		print(f"\nShared Protocol Validation")
-		print(f"  ├─ Shared labels in run              : {active_mask.sum().item()}")
-		print(f"  ├─ Shared labels with val support ≥1 : {shared_supported.sum().item()}")
-		print(f"  ├─ Shared head labels with support   : {shared_head_supported.sum().item()}")
-		print(f"  ├─ Shared rare labels with support   : {shared_rare_supported.sum().item()}")
-
-		if mode == "Image-to-Text":
-			head_positive_images = (
-				query_labels[:, head_mask & active_mask].sum(dim=1) > 0
-			).sum().item()
-
-			rare_positive_images = (
-				query_labels[:, rare_mask & active_mask].sum(dim=1) > 0
-			).sum().item()
-
-			print(f"  ├─ images with ≥1 shared-head label  : {head_positive_images}")
-			print(f"  └─ images with ≥1 shared-rare label  : {rare_positive_images}")
+	# Derived validation tier partitions (intersecting train/protocol masks with val support)
+	body_mask_raw = active_mask & ~head_mask & ~rare_mask
+	inactive_mask_raw = ~active_mask
 
 	tiers = {
 		"overall": active_mask & supported_mask,
 		"head":    head_mask & active_mask & supported_mask,
 		"rare":    rare_mask & active_mask & supported_mask,
 	}
+	body_supported = body_mask_raw & supported_mask
+	inactive_supported = inactive_mask_raw & supported_mask
 
 	if verbose:
-		print(f"\nSupported_Mask: {supported_mask.shape} {supported_mask.sum().item()}")
-		print(f"  ├─ Active classes before filter : {active_mask.sum().item()}")
-		print(f"  ├─ Active classes after  filter : {(active_mask & supported_mask).sum().item()}")
-		print(f"  ├─ Head   classes after  filter : {(head_mask & active_mask & supported_mask).sum().item()}")
-		print(f"  └─ Rare   classes after  filter : {(rare_mask & active_mask & supported_mask).sum().item()}")
+		n_val_images, n_total_classes = query_labels.shape
+		print(f"  ├─ {mode.upper()}")
+		print(f"  ├─ Similarity      : {similarity_matrix.shape} {similarity_matrix.device}")
+		print(f"  ├─ Query labels    : {query_labels.shape} {query_labels.device} (N_val_images={n_val_images:,}, C_vocab={n_total_classes:,})")
+		print(f"  ├─ use_fixed_masks : {use_fixed_masks} => min_val_support: {min_val_support}")
+		print(f"  ├─ Head mask       : {head_mask.shape} True={int(head_mask.sum().item()):,}")
+		print(f"  ├─ Rare mask       : {rare_mask.shape} True={int(rare_mask.sum().item()):,}")
+		print(f"  ├─ Active mask     : {active_mask.shape} True={int(active_mask.sum().item()):,} | Inactive={int(inactive_mask_raw.sum().item()):,}")
+		print(f"  └─ Supported Mask  : {supported_mask.shape} True={int(supported_mask.sum().item()):,} (val_support >= {min_val_support})")
+
+		# Detailed Validation Tier Derivation Table
+		print(f"\n[VAL TIER DERIVATION{(' — ' + protocol_label) if protocol_label else ''}] (train/protocol mask ∩ val_support >= {min_val_support})")
+		print(f"  {'Tier':10s} {'InputMask':>10s} {'ValSupp':>9s} {'Dropped':>8s} | {'ValSupport (min..max, mean±std, med)':>38s} | {'ValImgWith≥1':>13s}")
+		summary_rows = [
+			("OVERALL",  active_mask,       tiers["overall"]),
+			("HEAD",     head_mask & active_mask, tiers["head"]),
+			("BODY",     body_mask_raw,     body_supported),
+			("RARE",     rare_mask & active_mask, tiers["rare"]),
+			("INACTIVE", inactive_mask_raw, inactive_supported),
+		]
+		for rname, raw_m, supp_m in summary_rows:
+			n_in = int(raw_m.sum().item())
+			n_sp = int(supp_m.sum().item())
+			n_dr = n_in - n_sp
+			if n_sp > 0:
+				vs = val_support[supp_m].float()
+				vs_std = vs.std(unbiased=False).item() if vs.numel() > 1 else 0.0
+				vs_str = f"{int(vs.min().item())}..{int(vs.max().item())}, {vs.mean().item():.1f}±{vs_std:.1f}, med={vs.median().item():.0f}"
+				n_imgs = int((query_labels[:, supp_m].sum(dim=1) > 0).sum().item())
+				img_str = f"{n_imgs:,}/{n_val_images:,}"
+			else:
+				vs_str = "0 (none pass filter)"
+				img_str = f"0/{n_val_images:,}"
+			print(f"  {rname:10s} {n_in:10,d} {n_sp:9,d} {n_dr:8,d} | {vs_str:>38s} | {img_str:>13s}")
+
+		if class_names is not None and len(class_names) == n_total_classes:
+			def _fmt_val_samples(mask_t: torch.Tensor, desc: bool = True, limit: int = 5) -> str:
+				idxs = torch.where(mask_t)[0]
+				if idxs.numel() == 0:
+					return "(none)"
+				order = torch.argsort(val_support[idxs], descending=desc)
+				picked = idxs[order[:limit]].tolist()
+				return ", ".join(f"'{class_names[i]}'(val={int(val_support[i].item())})" for i in picked)
+
+			dropped_active = active_mask & ~supported_mask
+			print(f"  Val tier examples:")
+			print(f"    ├─ HEAD top-5    : {_fmt_val_samples(tiers['head'], desc=True)}")
+			print(f"    ├─ RARE bottom-5 : {_fmt_val_samples(tiers['rare'], desc=False)}")
+			if dropped_active.any():
+				print(f"    └─ DROPPED (v<{min_val_support}): {_fmt_val_samples(dropped_active, desc=True)}")
+			else:
+				print(f"    └─ DROPPED (v<{min_val_support}): (none)")
 		print()
 
 	results = {}
@@ -356,9 +377,20 @@ def compute_tiered_retrieval_metrics(
 				}
 				continue
 
-			pool_sim[(pool_lab > 0) & ~in_tier] = float("-inf")       # other-tier positives: ignored, not negatives
+			other_tier_pos_mask = (pool_lab > 0) & ~in_tier
+			n_other_tier_masked = int(other_tier_pos_mask[has_tier_label].sum().item())
+			pool_sim[other_tier_pos_mask] = float("-inf")             # other-tier positives: ignored, not negatives
 			tier_sim, tier_query_labels = pool_sim[has_tier_label], tier_lab[has_tier_label]
 			tier_candidate_labels = torch.arange(len(pool_idx), device=similarity_matrix.device)
+
+			if verbose:
+				avg_pos_per_q = tier_query_labels.sum(dim=1).float().mean().item()
+				print(
+					f"  [I2T {tier_name.upper():7s} SETUP] "
+					f"candidate_pool={len(pool_idx):,} | relevant_tier_cls={int(in_tier.sum().item()):,} | "
+					f"val_queries={tier_sim.shape[0]:,}/{query_labels.shape[0]:,} | "
+					f"avg_tier_pos/img={avg_pos_per_q:.2f} | other_tier_pos_masked={n_other_tier_masked:,}"
+				)
 
 		else:  # Text-to-Image
 			# Queries are classes (rows), candidates are images (cols)
@@ -370,6 +402,15 @@ def compute_tiered_retrieval_metrics(
 			)
 
 			tier_candidate_labels = query_labels[:, tier_indices] # [N, tier]
+
+			if verbose:
+				pos_per_cls = tier_candidate_labels.sum(dim=0).float()
+				print(
+					f"  [T2I {tier_name.upper():7s} SETUP] "
+					f"query_classes={len(tier_indices):,} | candidate_val_images={tier_sim.shape[1]:,} | "
+					f"val_pos/class: min={int(pos_per_cls.min().item())} max={int(pos_per_cls.max().item())} "
+					f"med={pos_per_cls.median().item():.0f}"
+				)
 
 		tier_metrics = compute_retrieval_metrics_from_similarity(
 			similarity_matrix=tier_sim,
@@ -2568,6 +2609,8 @@ def evaluate_on_shared_tiers(
 		active_mask=masks["shared_mask"],
 		mode="Image-to-Text",
 		use_fixed_masks=use_fixed_masks, # no adaptive min_val_support, fixed at 1
+		class_names=class_names,
+		protocol_label="SHARED PROTOCOL",
 		verbose=verbose,
 	)
 
@@ -2580,6 +2623,8 @@ def evaluate_on_shared_tiers(
 		active_mask=masks["shared_mask"],
 		mode="Text-to-Image",
 		use_fixed_masks=use_fixed_masks, # no adaptive min_val_support, fixed at 1
+		class_names=class_names,
+		protocol_label="SHARED PROTOCOL",
 		verbose=verbose,
 	)
 
@@ -2757,6 +2802,12 @@ def evaluate_best_model(
 	t2i_similarity = validation_results["t2i_similarity"]
 	device_labels  = validation_results["device_labels"]
 
+	# Extract class names once for both standard-tier diagnostics and shared protocol
+	try:
+		class_names = validation_loader.dataset.dataset.classes
+	except AttributeError:
+		class_names = validation_loader.dataset.unique_labels
+
 	tiered_i2t = compute_tiered_retrieval_metrics(
 		similarity_matrix=i2t_similarity,
 		query_labels=device_labels,
@@ -2766,6 +2817,8 @@ def evaluate_best_model(
 		active_mask=active_mask,
 		mode="Image-to-Text",
 		use_fixed_masks=use_fixed_masks,
+		class_names=class_names,
+		protocol_label="STANDARD (PER-RUN)",
 		verbose=verbose,
 	)
 
@@ -2778,14 +2831,10 @@ def evaluate_best_model(
 		active_mask=active_mask,
 		mode="Text-to-Image",
 		use_fixed_masks=use_fixed_masks,
+		class_names=class_names,
+		protocol_label="STANDARD (PER-RUN)",
 		verbose=verbose,
 	)
-
-	# needed for both ordinary tiers (already available via caller) and shared protocol
-	try:
-		class_names = validation_loader.dataset.dataset.classes
-	except AttributeError:
-		class_names = validation_loader.dataset.unique_labels
 
 	if tier_spec_path:
 		# load json file:

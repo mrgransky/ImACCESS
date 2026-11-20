@@ -5,11 +5,16 @@ def diagnose_train_val_coverage(
 	train_freq: torch.Tensor,
 	validation_loader,
 	num_classes: int,
+	active_mask: Optional[torch.Tensor] = None,
+	head_mask: Optional[torch.Tensor] = None,
+	rare_mask: Optional[torch.Tensor] = None,
+	class_names: Optional[List[str]] = None,
 	verbose: bool = True,
 ) -> torch.Tensor:
 	"""
-	Returns val_freq tensor and prints coverage diagnostic.
-	Call once after compute_loss_masks() in each fine-tuning function.
+	Returns val_freq tensor and prints coverage diagnostic, including how
+	training-derived masks (active / head / body / rare / inactive) project
+	onto the validation set.
 	"""
 	val_freq = torch.zeros(num_classes, dtype=torch.float32)
 
@@ -36,6 +41,62 @@ def diagnose_train_val_coverage(
 		print(f"  ├─ Active in train only       : {train_only}")
 		print(f"  ├─ Active in val only         : {val_only}")
 		print(f"  └─ Inactive in both           : {neither}")
+
+		# Train -> Val Tier Projection breakdown (shows how train-defined masks map onto val)
+		if active_mask is not None and head_mask is not None and rare_mask is not None:
+			am = active_mask.detach().cpu().bool()
+			hm = head_mask.detach().cpu().bool() & am
+			rm = rare_mask.detach().cpu().bool() & am
+			bm = am & ~hm & ~rm
+			im = ~am
+			hr_overlap = int((hm & rm).sum().item())
+
+			print(f"\n[TRAIN -> VAL TIER PROJECTION] (masks derived ONLY from train_freq; val applies val_freq >= 1 support filter)")
+			print(f"  Partition check: ACTIVE({int(am.sum())}) = HEAD({int(hm.sum())}) + BODY({int(bm.sum())}) + RARE({int(rm.sum())}) | HEAD∩RARE={hr_overlap} | INACTIVE={int(im.sum())}")
+			print(f"  {'Tier':10s} {'TrainCls':>9s} {'ValSupp≥1':>10s} {'Drop(v=0)':>10s} | {'TrainFreq (min..max, med)':>26s} | {'ValFreq[supp] (min..max, med, sum)':>36s}")
+
+			tier_defs = [
+				("ACTIVE",   am),
+				("HEAD",     hm),
+				("BODY",     bm),
+				("RARE",     rm),
+				("INACTIVE", im),
+			]
+			for tname, tmask in tier_defs:
+				n_tr = int(tmask.sum().item())
+				t_val_supp = tmask & val_active
+				n_vs = int(t_val_supp.sum().item())
+				n_drop = n_tr - n_vs
+				if n_tr > 0:
+					tf = train_freq[tmask]
+					tr_str = f"{tf.min().item():.0f}..{tf.max().item():.0f}, med={tf.median().item():.0f}"
+				else:
+					tr_str = "N/A"
+				if n_vs > 0:
+					vf = val_freq[t_val_supp]
+					va_str = f"{vf.min().item():.0f}..{vf.max().item():.0f}, med={vf.median().item():.0f}, sum={int(vf.sum().item()):,}"
+				else:
+					va_str = "0 (no val positives)"
+				print(f"  {tname:10s} {n_tr:9,d} {n_vs:10,d} {n_drop:10,d} | {tr_str:>26s} | {va_str:>36s}")
+
+			# Concrete sample labels per tier with (train_freq, val_freq)
+			if class_names is not None and len(class_names) == num_classes:
+				def _fmt_examples(mask_tensor: torch.Tensor, sort_by_train_desc: bool = True, limit: int = 5) -> str:
+					idxs = torch.where(mask_tensor)[0]
+					if idxs.numel() == 0:
+						return "(none)"
+					order = torch.argsort(train_freq[idxs], descending=sort_by_train_desc)
+					picked = idxs[order[:limit]].tolist()
+					return ", ".join(
+						f"'{class_names[i]}'(tr={int(train_freq[i].item())},va={int(val_freq[i].item())})"
+						for i in picked
+					)
+
+				print(f"\nSample labels:")
+				print(f"  ├─ HEAD top-5     {_fmt_examples(hm & val_active, sort_by_train_desc=True)}")
+				print(f"  ├─ RARE bottom-5  {_fmt_examples(rm & val_active, sort_by_train_desc=False)}")
+				print(f"  ├─ DROPPED (v=0)  {_fmt_examples(am & ~val_active, sort_by_train_desc=True)}")
+				print(f"  └─ INACTIVE (t=0) {_fmt_examples(im, sort_by_train_desc=False)}")
 
 		# Train-only class frequency analysis
 		if train_only > 0:
@@ -119,8 +180,6 @@ def compute_loss_masks(
 			) from error
 
 	num_classes = len(class_names)
-
-
 
 	# 1. Count label frequencies
 	N = len(train_loader.dataset)
@@ -216,7 +275,7 @@ def compute_loss_masks(
 		rare_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
 	
 	if verbose:
-		print(f"\nLabel frequencies for {train_loader_name}")
+		print(f"\nLabel frequencies")
 		print(f"  ├─ Total samples:            {N:,}")
 		print(f"  ├─ Total labels:             {num_classes:,}")
 		print(f"  ├─ Train freq:               [{train_freq.min():.1f}, {train_freq.max():.1f}] μ={train_freq.mean():.1f} σ={train_freq.std():.1f} {type(train_freq)} {train_freq.shape} {train_freq.dtype}, {train_freq.device}")
@@ -229,14 +288,17 @@ def compute_loss_masks(
 		print(f"  ├─ Active classes (freq>0):  {active_mask.sum().item():,} / {num_classes:,} {type(active_mask)} {active_mask.shape}")
 		print(f"  ├─ Head  (Pareto {pareto_threshold}):       {head_mask.sum().item():,}")
 		print(f"  └─ Rare  (bottom {rare_percentile}):       {rare_mask.sum().item():,}")
+		diagnose_train_val_coverage(
+			train_freq=train_freq,
+			validation_loader=validation_loader,
+			num_classes=num_classes,
+			active_mask=active_mask,
+			head_mask=head_mask,
+			rare_mask=rare_mask,
+			class_names=class_names,
+			verbose=verbose,
+		)
 		print("-"*120)
-
-	diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
 
 	return {
 		"active_mask": active_mask,

@@ -393,6 +393,7 @@ class MultiLabelProbe(torch.nn.Module):
 		hidden_dim: Optional[int] = None, 
 		dropout: float = 0.1,
 		zero_shot_init: bool = True,
+		loss_masks: Optional[Dict[str, Any]] = None,
 		target_resolution: Optional[int] = None,
 		verbose: bool = True
 	):
@@ -403,6 +404,7 @@ class MultiLabelProbe(torch.nn.Module):
 		self.class_names = class_names
 		self.device = device
 		self.verbose = verbose
+		self._prior_bias_initialized = False
 		
 		# Step 1: ViT positional embeddings if needed
 		self._fix_vit_positional_embeddings(target_resolution)
@@ -410,7 +412,7 @@ class MultiLabelProbe(torch.nn.Module):
 		# Step 2: Detect feature dimension
 		self.input_dim = self._detect_feature_dimension()
 		
-		# Step 3: Build probe architecture
+		# Step 3: Build probe architecture (placed on target device before weight/bias init)
 		if hidden_dim is not None:
 			# Two-layer MLP probe
 			self.probe = nn.Sequential(
@@ -418,20 +420,38 @@ class MultiLabelProbe(torch.nn.Module):
 				nn.ReLU(),
 				nn.Dropout(dropout),
 				nn.Linear(hidden_dim, num_classes) # final layer
-			)
+			).to(self.device)
 			self.probe_type = "MLP"
 		else:
 			# Simple linear probe
-			self.probe = torch.nn.Linear(self.input_dim, num_classes)
+			self.probe = torch.nn.Linear(self.input_dim, num_classes).to(self.device)
 			self.probe_type = "Linear"
 
 		# Register as buffers so they move with .to(device)
-		self.register_buffer('_W_init', torch.empty(0))
-		self.register_buffer('_b_init', torch.empty(0))
+		self.register_buffer('_W_init', torch.empty(0, device=self.device))
+		self.register_buffer('_b_init', torch.empty(0, device=self.device))
 
-		# Step 4: Initialize probe weights for multi-label
+		# Step 4a: Initialize probe weights from zero-shot CLIP text embeddings
 		if zero_shot_init:
 			self._zero_shot_initialization_multilabel()
+		else:
+			with torch.no_grad():
+				self._W_init = self.weight.data.clone()
+				self._b_init = self.bias.data.clone()
+
+		# Step 4b: Initialize probe biases from weighted-BCE training priors (when loss_masks provided)
+		if loss_masks is not None:
+			self.init_bias_from_priors(
+				train_freq=loss_masks["train_freq"],
+				pos_weight=loss_masks["pos_weight"],
+				num_samples=loss_masks["N"],
+				active_mask=loss_masks.get("active_mask"),
+				head_mask=loss_masks.get("head_mask"),
+				rare_mask=loss_masks.get("rare_mask"),
+				inactive_bias=None,
+				verbose=self.verbose,
+			)
+			self._prior_bias_initialized = True
 		
 		if self.verbose:
 			self._print_initialization_summary()
@@ -786,6 +806,7 @@ class MultiLabelProbe(torch.nn.Module):
 			w_norms = w.norm(dim=1)
 			b = self.bias.data
 			b_mean, b_std = b.mean().item(), b.std().item()
+			b_min, b_max = b.min().item(), b.max().item()
 
 		# Gradient isolation check
 		probe_grad_ok = all(p.requires_grad for p in self.probe.parameters())
@@ -793,6 +814,7 @@ class MultiLabelProbe(torch.nn.Module):
 
 		# Buffer registration check
 		w_init_ok = hasattr(self, '_W_init') and self._W_init.numel() > 0
+		b_init_ok = hasattr(self, '_b_init') and self._b_init.numel() > 0
 
 		print("="*70)
 		print(f"ROBUST MULTI-LABEL PROBE — INITIALIZATION SUMMARY")
@@ -826,23 +848,29 @@ class MultiLabelProbe(torch.nn.Module):
 		print(f"       mean={w_mean:>+.6f}  std={w_std:.6f}  min={w_min:>+.6f}  max={w_max:>+.6f}")
 		print(f"     Row norms       : mean={w_norms.mean():.4f}  std={w_norms.std():.4f}  "
 			  f"min={w_norms.min():.4f}  max={w_norms.max():.4f}")
-		print(f"     Bias vector     : mean={b_mean:>+.6f}  std={b_std:.6f}")
+		print(f"     Bias vector     : mean={b_mean:>+.6f}  std={b_std:.6f}  min={b_min:>+.6f}  max={b_max:>+.6f}")
 		if self.probe_type == "Linear":
 			print(f"     → Initialized from L2-normalized CLIP text embeddings (zero-shot).")
 			print(f"     → Row norms ≈ 1.0 confirms unit-normalized text embedding init.")
 		else:
 			print(f"     → MLP final layer initialized (scaled ×0.05 for multi-label stability).")
+		if getattr(self, "_prior_bias_initialized", False):
+			print(f"     → Bias initialized from weighted-BCE training priors (with adaptive inactive floor).")
+		else:
+			print(f"     → Bias initialized to 0.0 (no loss_masks provided; expected for checkpoint inference).")
 
 		# ── Safety & Isolation Checks ────────────────────────────────────────
 		print(f"\nSAFETY CHECKS")
-		probe_status = "PASS" if probe_grad_ok else "FAIL — probe params are frozen!"
-		clip_status  = "PASS" if clip_frozen_ok else "FAIL — CLIP is trainable!"
-		init_status  = "PASS" if w_init_ok else "FAIL — _W_init buffer missing!"
+		probe_status  = "PASS" if probe_grad_ok else "FAIL — probe params are frozen!"
+		clip_status   = "PASS" if clip_frozen_ok else "FAIL — CLIP is trainable!"
+		w_init_status = "PASS" if w_init_ok else "FAIL — _W_init buffer missing!"
+		b_init_status = "PASS" if b_init_ok else "FAIL — _b_init buffer missing!"
 		print(f"     Probe requires_grad   : {probe_status}")
 		print(f"     CLIP fully frozen     : {clip_status}")
-		print(f"     _W_init buffer exists : {init_status}")
+		print(f"     _W_init buffer exists : {w_init_status}")
+		print(f"     _b_init buffer exists : {b_init_status}")
 
-		if not probe_grad_ok or not clip_frozen_ok or not w_init_ok:
+		if not probe_grad_ok or not clip_frozen_ok or not w_init_ok or not b_init_ok:
 			print(f"\n[WARNING] One or more safety checks failed!")
 			print(f"         Training may behave unexpectedly. Review configuration.")
 
@@ -937,6 +965,7 @@ def get_probe_clip(
 	hidden_dim: Optional[int] = None,
 	dropout: float = 0.1,
 	zero_shot_init: bool = True,
+	loss_masks: Optional[Dict[str, Any]] = None,
 	target_resolution: Optional[int] = None,
 	num_classes_override: Optional[int] = None,
 	verbose: bool = True
@@ -951,6 +980,9 @@ def get_probe_clip(
 			hidden_dim: Optional hidden dimension for MLP probe (None = linear probe)
 			dropout: Dropout rate for the probe
 			zero_shot_init: Whether to initialize with CLIP text embeddings
+			loss_masks: Optional output dict from compute_loss_masks(); when provided for
+				multi-label training, biases are initialized directly to weighted-BCE priors
+				inside MultiLabelProbe.__init__(). Leave None for inference / single-label.
 			target_resolution: Target image resolution (auto-detected if None)
 			verbose: Whether to print detailed information
 			
@@ -999,6 +1031,7 @@ def get_probe_clip(
 			hidden_dim=hidden_dim,
 			dropout=dropout,
 			zero_shot_init=zero_shot_init,
+			loss_masks=loss_masks,
 			target_resolution=target_resolution,
 			verbose=verbose
 		).to(device)

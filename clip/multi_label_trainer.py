@@ -361,22 +361,13 @@ def probe_multi_label(
 			amp_dtype = torch.float16
 		print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
-	# FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
+	# FREEZE ALL CLIP PARAMETERS
 	for param in model.parameters():
 		param.requires_grad = False
-
-	# Build probe (wraps frozen CLIP, adds trainable W and b)
 	model.eval()
-	probe = get_probe_clip(
-		clip_model=model,
-		validation_loader=validation_loader,
-		device=torch.device(device),
-		hidden_dim=probe_hidden_dim, # if activated, it creates MLP probe (Not used in our experiments)
-		dropout=probe_dropout,
-		zero_shot_init=True, # faster convergence
-		verbose=verbose,
-	)
 
+	# Compute training-set loss masks & pos_weight first so MultiLabelProbe.__init__()
+	# initializes both W (zero-shot text embeddings) and b (weighted-BCE priors) in one step.
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
@@ -392,17 +383,15 @@ def probe_multi_label(
 	N = masks["N"]
 	train_freq = masks["train_freq"]
 
-	# Initialize bias to weighted-BCE prior log-odds so step-0 negative gradients
-	# do not force AdamW to overwrite W_init with -alpha * mean(x) on Epoch 1.
-	# inactive_bias=None derives the inactive floor adaptively from min(active_bias) - margin.
-	probe.init_bias_from_priors(
-		train_freq=train_freq,
-		pos_weight=pos_weight,
-		num_samples=N,
-		active_mask=active_mask,
-		head_mask=head_mask,
-		rare_mask=rare_mask,
-		inactive_bias=None,
+	# Build probe (wraps frozen CLIP, initializes trainable W from text embeds and b from priors)
+	probe = get_probe_clip(
+		clip_model=model,
+		validation_loader=validation_loader,
+		device=torch.device(device),
+		hidden_dim=probe_hidden_dim, # if activated, it creates MLP probe (Not used in our experiments)
+		dropout=probe_dropout,
+		zero_shot_init=True, # faster convergence
+		loss_masks=masks,    # initializes bias to weighted-BCE equilibrium priors inside __init__
 		verbose=verbose,
 	)
 
@@ -442,7 +431,7 @@ def probe_multi_label(
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  ├─ Weight group (wd={weight_decay}): {sum(p.numel() for p in decay_params):,} params")
-		print(f"  └─ Bias group   (wd=0.0):          {sum(p.numel() for p in no_decay_params):,} params")
+		print(f"  └─ Bias group   (wd=0.0): {sum(p.numel() for p in no_decay_params):,} params")
 
 	# approximate T_max: N epochs * minimum_epochs
 	estimated_epochs = 2 * minimum_epochs
@@ -636,12 +625,15 @@ def probe_multi_label(
 				inact_w_grad_max = label_gradients_per_class_norm[~active_mask].max().item() if (~active_mask).any() else 0.0
 				b_grad_abs = bias_gradients.abs() if bias_gradients is not None else torch.zeros_like(label_gradients_per_class_norm)
 				print(
-					f"\t\t[GRAD] b{bidx+1:6d} W_grad_norm(active): "
-					f"(min, max)=({label_gradients_per_class_norm[active_mask].min().item():.2e}, {label_gradients_per_class_norm[active_mask].max().item():.2e}) "
+					f"\t\t[GRAD] batch{bidx+1:4d} W_grad_norm(active) "
+					f"range: ({label_gradients_per_class_norm[active_mask].min().item():.2e}, {label_gradients_per_class_norm[active_mask].max().item():.2e}) "
 					f"μ={label_gradients_per_class_norm[active_mask].mean().item():.2e} | "
-					f"b_grad(active): max={b_grad_abs[active_mask].max().item():.2e} μ={b_grad_abs[active_mask].mean().item():.2e} | "
+					f"b_grad(active): range: ({b_grad_abs[active_mask].min().item():.2e}, {b_grad_abs[active_mask].max().item():.2e}) μ={b_grad_abs[active_mask].mean().item():.2e} | "
 					f"inactive_max={inact_w_grad_max:.1e}"
 				)
+
+			if bidx % print_every == 0 or bidx + 1 == len(data_iter):
+				print(f"\tBatch[{bidx+1:4d}/{len(data_iter)}] Loss: {loss.item():.6f}")
 
 			torch.nn.utils.clip_grad_norm_(probe.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
@@ -651,9 +643,6 @@ def probe_multi_label(
 			# Track losses
 			epoch_loss  += loss.item()
 			num_batches += 1
-			
-			if bidx % print_every == 0 or bidx + 1 == len(data_iter):
-				print(f"\tBatch[{bidx+1:6d}/{len(data_iter)}] Loss: {loss.item():.6f}")
 		
 		# Calculate average losses
 		avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
