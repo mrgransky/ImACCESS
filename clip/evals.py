@@ -335,13 +335,13 @@ def compute_tiered_retrieval_metrics(
 				return ", ".join(f"'{class_names[i]}'(val={int(val_support[i].item())})" for i in picked)
 
 			dropped_active = active_mask & ~supported_mask
-			print(f"  Val tier examples:")
-			print(f"    ├─ HEAD top-5    : {_fmt_val_samples(tiers['head'], desc=True)}")
-			print(f"    ├─ RARE bottom-5 : {_fmt_val_samples(tiers['rare'], desc=False)}")
+			print(f"\nVal tier examples:")
+			print(f"  ├─ HEAD top-5    {_fmt_val_samples(tiers['head'], desc=True)}")
+			print(f"  ├─ RARE bottom-5 {_fmt_val_samples(tiers['rare'], desc=False)}")
 			if dropped_active.any():
-				print(f"    └─ DROPPED (v<{min_val_support}): {_fmt_val_samples(dropped_active, desc=True)}")
+				print(f"  └─ DROPPED (v<{min_val_support}) {_fmt_val_samples(dropped_active, desc=True)}")
 			else:
-				print(f"    └─ DROPPED (v<{min_val_support}): (none)")
+				print(f"  └─ DROPPED (v<{min_val_support}) (none)")
 		print()
 
 	results = {}
