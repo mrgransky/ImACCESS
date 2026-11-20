@@ -272,11 +272,18 @@ EPOCHS=(100 100 150 150 150)
 #   LORA_PLUS_LAMBDA : ratio of learning rates (B matrix / A matrix) for LoRA+
 LORA_RANKS=(16 64 64 64 64)
 # LORA_ALPHAS=(32.0 128.0 128.0 128.0 128.0)
-# LORA_ALPHA is derived as 2× LORA_RANK per dataset (common LoRA convention)
+# LORA_ALPHA is derived as 2× LORA_RANK per dataset (standard LoRA convention)
 LORA_ALPHAS=()
 for rank in "${LORA_RANKS[@]}"; do
 	LORA_ALPHAS+=("$(( rank * 2 )).0")
 done
+# rsLoRA (Kalajdzievski, 2023): alpha MUST be rank-independent so scale = alpha / sqrt(r)
+# stabilizes variance across ranks (alpha=8.0 -> scale=2.0 at r=16, scale=1.0 at r=64).
+RSLORA_ALPHA="8.0"
+# VeRA (Kopiczko et al., ICLR 2024): frozen shared matrices benefit from higher rank (256)
+# and ~10x higher learning rate than LoRA since only 1D scaling vectors (d, b) are trained.
+VERA_RANK=256
+VERA_LRS=(1.0e-03 5.0e-05 5.0e-05 5.0e-05 5.0e-05)
 LORA_DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 # LoRA+ lambda: ratio of B/A learning rates.
 # Per the LoRA+ paper (Hayou et al. 2024), effective range is ~16–256;
@@ -336,6 +343,14 @@ if [[ "$strategy" == "zero_shot" ]] || [[ "$strategy" == "probe" ]]; then
 fi
 
 LEARNING_RATE=${LRS[$dataset_index]}
+EFFECTIVE_LORA_RANK="${LORA_RANKS[$dataset_index]}"
+EFFECTIVE_LORA_ALPHA="${LORA_ALPHAS[$dataset_index]}"
+if [ "$strategy" = "rslora" ]; then
+	EFFECTIVE_LORA_ALPHA="$RSLORA_ALPHA"
+elif [ "$strategy" = "vera" ]; then
+	LEARNING_RATE="${VERA_LRS[$dataset_index]}"
+	EFFECTIVE_LORA_RANK="$VERA_RANK"
+fi
 
 ##############################################################################
 # EARLY STOPPING MINIMUM EPOCHS
@@ -371,8 +386,8 @@ echo "BATCH_SIZE [default/adjusted]: ${BATCH_SIZES[$dataset_index]} / $ADJUSTED_
 if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
 	 [ "$strategy" = "dora" ] || [ "$strategy" = "vera"      ] || \
 	 [ "$strategy" = "rslora" ]; then
-	echo "LORA_RANK           : ${LORA_RANKS[$dataset_index]}"
-	echo "LORA_ALPHA          : ${LORA_ALPHAS[$dataset_index]}"
+	echo "LORA_RANK           : $EFFECTIVE_LORA_RANK"
+	echo "LORA_ALPHA          : $EFFECTIVE_LORA_ALPHA"
 	echo "LORA_DROPOUT        : ${LORA_DROPOUTS[$dataset_index]}"
 	[ "$strategy" = "lora_plus" ] && \
 		echo "LORA_PLUS_LAMBDA    : ${LORA_PLUS_LAMBDAS[$dataset_index]}"
@@ -415,8 +430,8 @@ CMD="python -u trainer.py \
 if [ "$strategy" = "lora"      ] || [ "$strategy" = "lora_plus" ] || \
 	 [ "$strategy" = "dora"      ] || [ "$strategy" = "vera"      ] || \
 	 [ "$strategy" = "rslora"    ]; then
-	CMD="$CMD --lora_rank    \"${LORA_RANKS[$dataset_index]}\""
-	CMD="$CMD --lora_alpha   \"${LORA_ALPHAS[$dataset_index]}\""
+	CMD="$CMD --lora_rank    \"$EFFECTIVE_LORA_RANK\""
+	CMD="$CMD --lora_alpha   \"$EFFECTIVE_LORA_ALPHA\""
 	CMD="$CMD --lora_dropout \"${LORA_DROPOUTS[$dataset_index]}\""
 fi
 

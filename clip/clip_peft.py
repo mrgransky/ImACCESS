@@ -9,23 +9,14 @@ class IA3Linear(torch.nn.Module):
 		"""
 		(IA)^3: Infused Adapter by Inhibiting and Amplifying Inner Activations
 		Reference: Liu et al., NeurIPS 2022
-		- Learns a single scaling vector per layer: h' = h ⊙ s
-		- s ∈ R^d (same dimension as output of linear layer)
-		- Only s is trainable; base weights are frozen.
-		- Extremely parameter-efficient: 1 vector per layer.
-
-		Args:
-				in_features: Input dimension
-				out_features: Output dimension
-				device: Device to place parameters
-				rank: Initial rank (for compatibility)
-				alpha: Scaling factor (for compatibility)
-				dropout: Dropout rate (for compatibility)
-				bias: Whether base linear has bias
-				quantized: Whether to use quantized base weights
-				quantization_bits: 4 or 8
-				compute_dtype: dtype for quantized compute
-				verbose: Enable debug prints
+		- Attention K, V (scale_kv_only=True on fused QKV in_proj):
+			leaves Q unscaled and scales K, V outputs by learned vectors l_k, l_v ∈ R^{d_model}.
+		- Feed-forward down-projection c_proj (is_feedforward=True):
+			scales post-activation (post-GELU) input activations by l_ff ∈ R^{d_ff}:
+			h = W_2 (l_ff ⊙ x) + b_2.
+		- Generic linear layer (both False):
+			scales output activations h' = (W x + b) ⊙ s.
+		- Only ia3_scale is trainable; base weights and bias are frozen.
 		"""
 		def __init__(
 				self,
@@ -39,7 +30,9 @@ class IA3Linear(torch.nn.Module):
 				quantized: bool = False,
 				quantization_bits: int = 8,
 				compute_dtype: torch.dtype = torch.float16,
-				verbose: bool = True,
+				is_feedforward: bool = False,
+				scale_kv_only: bool = False,
+				verbose: bool = False,
 		):
 				super(IA3Linear, self).__init__()
 				self.in_features = in_features
@@ -48,11 +41,18 @@ class IA3Linear(torch.nn.Module):
 				self.quantized = quantized
 				self.quantization_bits = quantization_bits
 				self.compute_dtype = compute_dtype
+				self.is_feedforward = is_feedforward
+				self.scale_kv_only = scale_kv_only
 				self.verbose = verbose
+
+				if is_feedforward and scale_kv_only:
+					raise ValueError("IA3Linear cannot have both is_feedforward=True and scale_kv_only=True.")
+				if scale_kv_only and (out_features % 3 != 0):
+					raise ValueError(f"scale_kv_only=True requires out_features divisible by 3 (fused QKV), got {out_features}.")
 
 				if self.verbose:
 					print(f"[INITIALIZATION] {self.__class__.__name__}")
-					print(f"    ├─ in_features={in_features}, out_features={out_features}")
+					print(f"    ├─ in_features={in_features}, out_features={out_features}, is_feedforward={is_feedforward}, scale_kv_only={scale_kv_only}")
 					if quantized:
 						print(f"    ├─ Quantized: {quantized}")
 						print(f"    ├─ Quantization bits: {quantization_bits}")
@@ -78,8 +78,17 @@ class IA3Linear(torch.nn.Module):
 				self.weight = self.linear.weight
 				self.bias = self.linear.bias if bias else None
 
-				# IA³ scaling vector: shape = [out_features]
-				self.ia3_scale = torch.nn.Parameter(torch.ones(out_features, device=device))
+				# IA³ scaling vector:
+				#   - is_feedforward=True (c_proj): scales post-GELU input [in_features] (l_ff)
+				#   - scale_kv_only=True (fused QKV in_proj): scales K and V slices [2 * embed_dim] ([l_k, l_v])
+				#   - default: scales output [out_features]
+				if self.is_feedforward:
+					scale_dim = in_features
+				elif self.scale_kv_only:
+					scale_dim = 2 * (out_features // 3)
+				else:
+					scale_dim = out_features
+				self.ia3_scale = torch.nn.Parameter(torch.ones(scale_dim, device=device))
 				if self.verbose:
 					print(f"    └─ scale vector: {type(self.ia3_scale)} {self.ia3_scale.shape}, init (ones?): {self.ia3_scale.mean()}, std: {self.ia3_scale.std()}")
 
@@ -96,15 +105,23 @@ class IA3Linear(torch.nn.Module):
 
 		def forward(self, x: torch.Tensor) -> torch.Tensor:
 				"""
-				Forward: h = (W x + b) ⊙ s
+				Forward:
+				- is_feedforward=True:  W (x ⊙ l_ff) + b  (post-GELU FFN rescaling)
+				- scale_kv_only=True:   [Q, K ⊙ l_k, V ⊙ l_v]  (attention K, V rescaling; Q unscaled)
+				- default:              (W x + b) ⊙ s
 				"""
-				base_output = self.linear(x)  # [B, out_features]
-				scaled_output = base_output * self.ia3_scale  # element-wise
-				return scaled_output
+				if self.is_feedforward:
+					return self.linear(x * self.ia3_scale)
+				base_output = self.linear(x)
+				if self.scale_kv_only:
+					embed_dim = self.out_features // 3
+					q, kv = base_output.split([embed_dim, 2 * embed_dim], dim=-1)
+					return torch.cat([q, kv * self.ia3_scale], dim=-1)
+				return base_output * self.ia3_scale
 
 		def merge_weights(self) -> None:
 				"""
-				Merge IA³ scale into base weight: W' = diag(s) @ W
+				Merge IA³ scale into base weight.
 				Only supported for non-quantized layers.
 				"""
 				if self.quantized:
@@ -113,17 +130,29 @@ class IA3Linear(torch.nn.Module):
 								"Keep IA³ separate during inference."
 						)
 				with torch.no_grad():
-						# Scale rows of weight matrix by ia3_scale
-						self.linear.weight.data = self.ia3_scale.unsqueeze(1) * self.linear.weight.data
-						# If bias exists, scale it too
-						if self.linear.bias is not None:
+						if self.is_feedforward:
+							# Scale input columns of W_2; bias b_2 is untouched
+							self.linear.weight.data = self.linear.weight.data * self.ia3_scale.unsqueeze(0)
+						elif self.scale_kv_only:
+							embed_dim = self.out_features // 3
+							full_scale = torch.cat([
+								torch.ones(embed_dim, device=self.ia3_scale.device, dtype=self.ia3_scale.dtype),
+								self.ia3_scale,
+							])
+							self.linear.weight.data = full_scale.unsqueeze(1) * self.linear.weight.data
+							if self.linear.bias is not None:
+								self.linear.bias.data = full_scale * self.linear.bias.data
+						else:
+							# Scale rows of weight matrix by ia3_scale
+							self.linear.weight.data = self.ia3_scale.unsqueeze(1) * self.linear.weight.data
+							if self.linear.bias is not None:
 								self.linear.bias.data = self.ia3_scale * self.linear.bias.data
-						# Zero out scale to disable
+						# Reset scale to identity (1.0)
 						self.ia3_scale.data.fill_(1.0)
 
 		def get_memory_footprint(self) -> dict:
 				base_params = self.in_features * self.out_features
-				ia3_params = self.out_features  # only the scaling vector
+				ia3_params = self.ia3_scale.numel()  # exact number of trainable scale entries
 
 				if self.quantized:
 						bytes_per_param = self.quantization_bits / 8
@@ -149,10 +178,11 @@ class IA3Linear(torch.nn.Module):
 						if self.quantized
 						else "full precision (fp32)"
 				)
+				mode_str = "feedforward(l_ff)" if self.is_feedforward else ("attention(l_k,l_v)" if self.scale_kv_only else "output")
 				return (
 						f"\n{self.__class__.__name__}\n"
-						f"  ├─ in_features={self.in_features}, out_features={self.out_features}\n"
-						f"  ├─ trainable_params={self.out_features:,} (IA³ scale vector)\n"
+						f"  ├─ in_features={self.in_features}, out_features={self.out_features}, mode={mode_str}\n"
+						f"  ├─ trainable_params={self.ia3_scale.numel():,} (IA³ scale vector)\n"
 						f"  └─ {quantization_str}\n"
 				)
 
@@ -236,13 +266,13 @@ class LoRALinear(torch.nn.Module):
 		self.lora_A = torch.nn.Linear(in_features, rank, bias=False)
 		self.lora_B = torch.nn.Linear(rank, out_features, bias=False)
 		
-		# Initialize LoRA weights
-		torch.nn.init.normal_(self.lora_A.weight, mean=0.0, std=1/rank)
+		# Initialize LoRA weights (rank-independent Kaiming uniform per official loralib / HF PEFT / rsLoRA / LoRA+)
+		torch.nn.init.kaiming_uniform_(self.lora_A.weight, a=math.sqrt(5))
 		torch.nn.init.zeros_(self.lora_B.weight)
 		
 		if self.verbose:
 			print(f"[INITIALIZATION] weights:")
-			print(f"\tlora_A: {self.lora_A.weight.shape} init: N(0, {1/rank})")
+			print(f"\tlora_A: {self.lora_A.weight.shape} init: kaiming_uniform(a=sqrt(5)) | std={self.lora_A.weight.std().item():.6f}")
 			print(f"\tlora_B: {self.lora_B.weight.shape} init: 0.0 | All zeros: {torch.all(self.lora_B.weight == 0.0)}")
 
 		# Freeze base weights
@@ -258,10 +288,8 @@ class LoRALinear(torch.nn.Module):
 		# Base output (dequantized automatically if quantized)
 		original_output = self.linear(x)
 		
-		# LoRA path: x → A → dropout → B → scale
-		lora_intermediate = self.lora_A(x)
-		lora_dropped = self.dropout(lora_intermediate)
-		lora_output = self.lora_B(lora_dropped)
+		# LoRA path: x → dropout → A → B → scale (matches Hu et al. 2022 / official loralib / HF PEFT)
+		lora_output = self.lora_B(self.lora_A(self.dropout(x)))
 		lora_scaled = self.scale * lora_output
 		# Combine
 		return original_output + lora_scaled
@@ -377,6 +405,7 @@ class DoRALinear(torch.nn.Module):
 		quantized: bool = False,
 		quantization_bits: int = 8,
 		compute_dtype: torch.dtype = torch.float16,
+		verbose: bool = False,
 	):
 		super(DoRALinear, self).__init__()
 		
@@ -390,6 +419,7 @@ class DoRALinear(torch.nn.Module):
 		self.quantized = quantized
 		self.quantization_bits = quantization_bits
 		self.compute_dtype = compute_dtype
+		self.verbose = verbose
 		
 		# [2] Create base linear layer based on quantization setting 
 		if quantized:
@@ -455,6 +485,16 @@ class DoRALinear(torch.nn.Module):
 		
 		# Magnitude is trainable
 		self.magnitude.requires_grad = True
+
+	@torch.no_grad()
+	def init_magnitude(self) -> None:
+		"""
+		Re-initialize self.magnitude = ||W_0||_c from the loaded pre-trained base weights.
+		Must be called immediately after copying pre-trained weights into self.linear.weight
+		so that DoRA equals the exact pre-trained layer at Step 0 (when lora_B == 0).
+		"""
+		base_weight = self._get_dequantized_weight() if self.quantized else self.linear.weight.data
+		self.magnitude.data.copy_(torch.norm(base_weight.float(), p=2, dim=1).to(self.magnitude.dtype))
 	
 	def _get_dequantized_weight(self) -> torch.Tensor:
 		"""Get dequantized weight for magnitude computation."""
@@ -484,53 +524,43 @@ class DoRALinear(torch.nn.Module):
 			return self.linear.weight.data
 	
 	def forward(self, x: torch.Tensor) -> torch.Tensor:
-			"""
-			Forward pass with DoRA decomposition.
-			
-			Computation:
-			1. Get directional component V (frozen pre-trained weight)
-			2. Compute LoRA directional update: ΔV = scale * (B @ dropout(A @ x))
-			3. Apply magnitude scaling: output = m * (V @ x + ΔV)
-			"""
-			# [1] Base directional output V @ x (normalized by original magnitude)
-			# The linear layer computes W @ x where W = m_original * V
+		"""
+		Forward pass with exact DoRA decomposition (Liu et al., ICML 2024, Eq. 5 & Sec. 4.2):
+			W' = m * (W_0 + s * B @ A) / ||W_0 + s * B @ A||_c
+			y  = (m / ||W_0 + s * B @ A||_c) ⊙ (x W_0^T + s * drop(x) A^T B^T) + b_0
+		"""
+		# [1] Unbiased base projection x @ W_0^T (bias b_0 is added AFTER magnitude-direction scaling)
+		if self.quantized:
 			base_output = self.linear(x)
-			
-			# [2] Compute LoRA directional update ΔV @ x
-			# LoRA Path: x → A → dropout → B → scale  
-			lora_output = self.lora_B(self.dropout(self.lora_A(x)))
-			
-			# [3] Normalize by original magnitude to get V @ x
-			# Then add directional update and re-scale by learned magnitude
-			with torch.no_grad():
-				if self.quantized:
-					original_weight = self._get_dequantized_weight()
-				else:
-					original_weight = self.linear.weight.data
-				
-				# Original column-wise magnitudes
-				original_magnitude = torch.norm(original_weight, p=2, dim=1, keepdim=True).T
-			
-			# Normalize base output to get V @ x
-			# base_output = (m_original * V) @ x, so V @ x = base_output / m_original
-			directional_output = base_output / (original_magnitude + 1e-8)
-			
-			# [4] Add LoRA directional update
-			directional_output = directional_output + self.scale * lora_output
-			
-			# [5] Apply learned magnitude scaling
-			# Shape broadcasting: magnitude is [out_features], output is [batch, out_features]
-			final_output = self.magnitude * directional_output
-			
-			return final_output
+			if self.linear.bias is not None:
+				base_output = base_output - self.linear.bias
+		else:
+			base_output = torch.nn.functional.linear(x, self.linear.weight, None)
+		
+		# [2] LoRA directional update: s * (B @ A @ dropout(x))
+		lora_output = self.scale * self.lora_B(self.lora_A(self.dropout(x)))
+		
+		# [3] Dynamic directional norm ||W_0 + s * B @ A||_c (detached per Liu et al. 2024 Sec. 4.2 / HF PEFT)
+		with torch.no_grad():
+			base_weight = self._get_dequantized_weight() if self.quantized else self.linear.weight.data
+			delta_weight = self.scale * (self.lora_B.weight.detach() @ self.lora_A.weight.detach())
+			weight_norm = torch.norm((base_weight + delta_weight).float(), p=2, dim=1).clamp_min(1e-8)
+		
+		# [4] Scale directional output by m / ||W_0 + s * B @ A||_c
+		mag_norm_scale = (self.magnitude / weight_norm.to(self.magnitude.dtype)).to(base_output.dtype)
+		final_output = mag_norm_scale * (base_output + lora_output)
+		
+		# [5] Add unscaled bias b_0 (if present)
+		if self.linear.bias is not None:
+			final_output = final_output + self.linear.bias.to(final_output.dtype)
+		
+		return final_output
 	
 	def merge_weights(self) -> None:
 		"""
-		Merge DoRA weights into base weights for inference.
-		WARNING: This will dequantize the base layer if quantized.
-		
-		The merged weight is: W' = m * (V + ΔV)
-		where V = W / ||W||_c and ΔV = scale * (B @ A)
+		Merge DoRA weights into base weights for inference:
+			W_merged = m * (W_0 + s * B @ A) / ||W_0 + s * B @ A||_c
+		Bias b_0 is left unchanged, matching forward() identically.
 		"""
 		if self.quantized:
 			raise NotImplementedError(
@@ -540,30 +570,21 @@ class DoRALinear(torch.nn.Module):
 			)
 		
 		with torch.no_grad():
-			# Get current weight W (which is m_original * V)
 			W = self.linear.weight.data
+			delta_W = self.scale * (self.lora_B.weight @ self.lora_A.weight)
+			adapted_W = W + delta_W
+			weight_norm = torch.norm(adapted_W.float(), p=2, dim=1, keepdim=True).clamp_min(1e-8).to(W.dtype)
+			W_merged = self.magnitude.unsqueeze(1).to(W.dtype) * (adapted_W / weight_norm)
 			
-			# Compute original column-wise magnitude
-			original_magnitude = torch.norm(W, p=2, dim=1, keepdim=True)
-			
-			# Get directional component V
-			V = W / (original_magnitude + 1e-8)
-			
-			# Compute LoRA directional update: ΔV = scale * (B @ A)
-			delta_V = self.scale * (self.lora_B.weight @ self.lora_A.weight)
-			
-			# Compute merged weight: W' = m * (V + ΔV)
-			W_merged = self.magnitude.unsqueeze(1) * (V + delta_V)
-			
-			# Update base weights
-			self.linear.weight.data = W_merged
+			# Update base weights (bias untouched)
+			self.linear.weight.data.copy_(W_merged)
 			
 			# Zero out LoRA to disable it
 			self.lora_A.weight.data.zero_()
 			self.lora_B.weight.data.zero_()
 			
 			# Reset magnitude to merged norms
-			self.magnitude.data = torch.norm(W_merged, p=2, dim=1)
+			self.magnitude.data.copy_(torch.norm(W_merged.float(), p=2, dim=1).to(self.magnitude.dtype))
 	
 	def get_memory_footprint(self) -> dict:
 		base_params = self.in_features * self.out_features
@@ -651,67 +672,49 @@ class VeRALinear(torch.nn.Module):
 		rank: int, 
 		max_dim: int, 
 		device: Union[str, torch.device], 
-		verbose: bool = False
+		verbose: bool = False,
+		seed: int = 42,
 	):
-		"""Initialize shared frozen random matrices once for all layers."""
-		key = (rank, device)
+		"""
+		Initialize shared unit-variance frozen random matrices once for all layers
+		using an isolated local torch.Generator (never clobbering global RNG).
+		Per-layer Kaiming fan-in scaling (1/sqrt(d_in) for A and 1/sqrt(rank) for B)
+		is applied in forward()/merge_weights() so every layer preserves O(1) variance
+		while sharing the exact same underlying storage.
+		"""
+		key = (rank, torch.device(device))
 		
 		if verbose:
-			print(f"\n[INITIALIZATION] shared matrices for rank={rank}, max_dim={max_dim}, device={device}")
+			print(f"\n[INITIALIZATION] VeRA shared matrices for rank={rank}, max_dim={max_dim}, device={device}")
 		
 		if key not in cls._shared_matrices:
-			# First initialization for this rank/device
-			if verbose:
-				print(f"First initialization for this rank/device combination")
-			
-			torch.manual_seed(42)  # For reproducibility
-			# Conservative initialization that works well for all layer types
-			# scale = (2.0 / (rank + max_dim)) ** 0.5  # Slightly more conservative than Xavier
-			scale = rank ** -0.5
-			if verbose:
-				print(f"[INITIALIZATION] scale(rank**-0.5): {scale:.6f}")
-			
-			shared_A = torch.randn(rank, max_dim, device=device) * scale
-			shared_B = torch.randn(max_dim, rank, device=device) * scale
+			gen = torch.Generator(device='cpu').manual_seed(seed)
+			shared_A = torch.randn(rank, max_dim, generator=gen).to(device)
+			shared_B = torch.randn(max_dim, rank, generator=gen).to(device)
 			
 			if verbose:
-				print(f"shared_A {shared_A.shape} mean={shared_A.mean():.6f} std={shared_A.std():.6f}")
-				print(f"shared_B {shared_B.shape} mean={shared_B.mean():.6f} std={shared_B.std():.6f}")
+				print(f"  ├─ First initialization (isolated generator seed={seed}, unit-variance base)")
+				print(f"  ├─ shared_A {shared_A.shape} mean={shared_A.mean():.6f} std={shared_A.std():.6f}")
+				print(f"  └─ shared_B {shared_B.shape} mean={shared_B.mean():.6f} std={shared_B.std():.6f}")
 			
-			cls._shared_matrices[key] = (shared_A, shared_B, max_dim)
+			cls._shared_matrices[key] = (shared_A, shared_B, max_dim, gen)
 		else:
-			# Check if we need to expand existing matrices
-			shared_A, shared_B, current_max_dim = cls._shared_matrices[key]
-			
-			if verbose:
-				print(f"Found existing matrices with current_max_dim={current_max_dim}")
+			shared_A, shared_B, current_max_dim, gen = cls._shared_matrices[key]
 			
 			if max_dim > current_max_dim:
-				# Expand matrices to accommodate larger dimensions
-				if verbose:
-					print(f"Expanding matrices from {current_max_dim} to {max_dim}")
-				
-				torch.manual_seed(42)
-				scale = rank ** -0.5
-				
-				new_shared_A = torch.randn(rank, max_dim, device=device) * scale
-				new_shared_B = torch.randn(max_dim, rank, device=device) * scale
-				
-				# Keep the same values for existing dims (for reproducibility)
-				new_shared_A[:, :current_max_dim] = shared_A
-				new_shared_B[:current_max_dim, :] = shared_B
+				extra_dim = max_dim - current_max_dim
+				extra_A = torch.randn(rank, extra_dim, generator=gen).to(device)
+				extra_B = torch.randn(extra_dim, rank, generator=gen).to(device)
+				new_shared_A = torch.cat([shared_A, extra_A], dim=1)
+				new_shared_B = torch.cat([shared_B, extra_B], dim=0)
 				
 				if verbose:
-					print(f"Expanded shared_A to shape: {new_shared_A.shape}")
-					print(f"Expanded shared_B to shape: {new_shared_B.shape}")
-					print(f"Preserved values for first {current_max_dim} dimensions")
+					print(f"  ├─ Expanded shared matrices cleanly from {current_max_dim} -> {max_dim} (+{extra_dim} uncorrelated dims)")
+					print(f"  ├─ shared_A {new_shared_A.shape} | shared_B {new_shared_B.shape}")
 				
-				cls._shared_matrices[key] = (new_shared_A, new_shared_B, max_dim)
-			else:
-				if verbose:
-					print(f"Using existing matrices without expansion")
+				cls._shared_matrices[key] = (new_shared_A, new_shared_B, max_dim, gen)
 		
-		shared_A, shared_B, _ = cls._shared_matrices[key]
+		shared_A, shared_B, _, _ = cls._shared_matrices[key]
 		return shared_A, shared_B
 			
 	def __init__(
@@ -794,20 +797,19 @@ class VeRALinear(torch.nn.Module):
 			verbose=self.verbose
 		)
 		
-		# Slice shared matrices for this layer's dimensions
-		# Register as buffers so they move with the model but aren't trained
-		vera_A_slice = shared_A_full[:, :self.in_features].clone()
-		vera_B_slice = shared_B_full[:self.out_features, :].clone()
+		# Slice shared matrices as non-cloned, non-persistent views so all layers genuinely share storage
+		vera_A_slice = shared_A_full[:, :self.in_features]
+		vera_B_slice = shared_B_full[:self.out_features, :]
+		self.scale_A = self.in_features ** -0.5  # Kaiming fan-in scaling for A: Var(A_kj) = 1 / d_in
+		self.scale_B = self.rank ** -0.5         # Kaiming fan-in scaling for B: Var(B_ik) = 1 / rank
 		
 		if self.verbose:
 			print(f"{self.__class__.__name__} Slicing shared matrices for this layer:")
-			print(f"vera_A slice {vera_A_slice.shape} (from {shared_A_full.shape})")
-			print(f"vera_A slice mean={vera_A_slice.mean():.6f}, std={vera_A_slice.std():.6f}")
-			print(f"vera_B slice {vera_B_slice.shape} (from {shared_B_full.shape})")
-			print(f"vera_B slice mean={vera_B_slice.mean():.6f}, std={vera_B_slice.std():.6f}")
+			print(f"vera_A view {vera_A_slice.shape} (from {shared_A_full.shape}, scale_A={self.scale_A:.6f})")
+			print(f"vera_B view {vera_B_slice.shape} (from {shared_B_full.shape}, scale_B={self.scale_B:.6f})")
 		
-		self.register_buffer('vera_A', vera_A_slice)
-		self.register_buffer('vera_B', vera_B_slice)
+		self.register_buffer('vera_A', vera_A_slice, persistent=False)
+		self.register_buffer('vera_B', vera_B_slice, persistent=False)
 		
 		# # Trainable scaling vectors (per layer)
 		# self.lambda_d = torch.nn.Parameter(torch.ones(self.rank)) # [rank]
@@ -835,61 +837,18 @@ class VeRALinear(torch.nn.Module):
 	
 	def forward(self, x: torch.Tensor) -> torch.Tensor:
 			"""
-			Forward pass: h = W*x + Λ_b * B * Λ_d * A * x
+			Forward pass: h = W*x + Λ_b * (scale_B * B) * Λ_d * (scale_A * A) * dropout(x)
+			where scale_A = d_in^{-1/2}, scale_B = r^{-1/2} enforce Kaiming fan-in variance.
 			"""
-			# if self.verbose:
-			# 		print(f"\n[VeRA] Forward pass:")
-			# 		print(f"[VeRA] Input tensor shape: {x.shape}")
-			# 		print(f"[VeRA] Input tensor stats: mean={x.mean():.6f}, std={x.std():.6f}")
-			
-			# Base output
 			base_output = self.linear(x)
 			
-			# if self.verbose:
-			# 		print(f"[VeRA] Base output shape: {base_output.shape}")
-			# 		print(f"[VeRA] Base output stats: mean={base_output.mean():.6f}, std={base_output.std():.6f}")
+			# VeRA path: x → dropout → (scale_A * A) → Λ_d → (scale_B * B) → Λ_b
+			vera_output = (self.dropout(x) @ self.vera_A.t()) * self.scale_A
+			vera_output = vera_output * self.lambda_d
+			vera_output = (vera_output @ self.vera_B.t()) * self.scale_B
+			vera_output = vera_output * self.lambda_b
 			
-			# VeRA path: x → A → Λ_d → dropout → B → Λ_b
-			vera_output = x @ self.vera_A.t()  					# [batch, rank]
-			
-			# if self.verbose:
-			# 		print(f"[VeRA] After A multiplication: shape={vera_output.shape}, "
-			# 					f"mean={vera_output.mean():.6f}, std={vera_output.std():.6f}")
-			
-			vera_output = vera_output * self.lambda_d  	# apply Λ_d as element-wise scale in rank space
-			
-			# if self.verbose:
-			# 		print(f"[VeRA] After lambda_d scaling: shape={vera_output.shape}, "
-			# 					f"mean={vera_output.mean():.6f}, std={vera_output.std():.6f}")
-			# 		print(f"[VeRA] lambda_d stats: mean={self.lambda_d.mean():.6f}, std={self.lambda_d.std():.6f}")
-			
-			vera_output = self.dropout(vera_output)			# [batch, rank]
-			
-			# if self.verbose:
-			# 		print(f"[VeRA] After dropout: shape={vera_output.shape}, "
-			# 					f"mean={vera_output.mean():.6f}, std={vera_output.std():.6f}")
-			
-			vera_output = vera_output @ self.vera_B.t()	# [batch, out_features]
-			
-			# if self.verbose:
-			# 		print(f"[VeRA] After B multiplication: shape={vera_output.shape}, "
-			# 					f"mean={vera_output.mean():.6f}, std={vera_output.std():.6f}")
-			
-			vera_output = vera_output * self.lambda_b  	# apply Λ_b as element-wise scale in output space
-			
-			# if self.verbose:
-			# 		print(f"[VeRA] After lambda_b scaling: shape={vera_output.shape}, "
-			# 					f"mean={vera_output.mean():.6f}, std={vera_output.std():.6f}")
-			# 		print(f"[VeRA] lambda_b stats: mean={self.lambda_b.mean():.6f}, std={self.lambda_b.std():.6f}")
-			
-			final_output = base_output + vera_output
-			
-			# if self.verbose:
-			# 		print(f"[VeRA] Final output shape: {final_output.shape}")
-			# 		print(f"[VeRA] Final output stats: mean={final_output.mean():.6f}, std={final_output.std():.6f}")
-			# 		print(f"[VeRA] Forward pass complete")
-			
-			return final_output
+			return base_output + vera_output
 
 	def merge_weights(self) -> None:
 		if self.verbose:
@@ -905,63 +864,16 @@ class VeRALinear(torch.nn.Module):
 			)
 		
 		with torch.no_grad():
-			# Compute VeRA delta: Λ_b * B * Λ_d * A
-			# First compute B * Λ_d
-			B_scaled = self.vera_B * self.lambda_d  # [out_features, rank]
-			
-			if self.verbose:
-				print(f"B_scaled shape: {B_scaled.shape}")
-				print(f"B_scaled stats: mean={B_scaled.mean():.6f}, std={B_scaled.std():.6f}")
-			
-			# Then compute (B * Λ_d) * A
-			vera_delta = B_scaled @ self.vera_A  # [out_features, in_features]
-			
-			if self.verbose:
-				print(f"vera_delta shape: {vera_delta.shape}")
-				print(f"vera_delta stats: mean={vera_delta.mean():.6f}, std={vera_delta.std():.6f}")
-			
-			# Finally scale by Λ_b
-			vera_delta = vera_delta * self.lambda_b.unsqueeze(1)  # [out_features, in_features]
-			
-			if self.verbose:
-				print(f"Final vera_delta after lambda_b scaling:")
-				print(f"Shape: {vera_delta.shape}")
-				print(f"Stats: mean={vera_delta.mean():.6f}, std={vera_delta.std():.6f}")
+			# Compute VeRA delta: Λ_b * (scale_B * B) * Λ_d * (scale_A * A)
+			B_scaled = (self.vera_B * self.scale_B) * self.lambda_d  # [out_features, rank]
+			vera_delta = (B_scaled @ (self.vera_A * self.scale_A)) * self.lambda_b.unsqueeze(1)  # [out_features, in_features]
 			
 			# Add to base weights
-			original_weight_stats = {
-				'mean': self.linear.weight.mean().item(),
-				'std': self.linear.weight.std().item()
-			}
-			
 			self.linear.weight.data += vera_delta
 			
-			new_weight_stats = {
-				'mean': self.linear.weight.mean().item(),
-				'std': self.linear.weight.std().item()
-			}
-			
-			if self.verbose:
-				print(
-					f"Original weight stats: mean={original_weight_stats['mean']:.6f}, std={original_weight_stats['std']:.6f}"
-				)
-				print(
-					f"New weight stats: mean={new_weight_stats['mean']:.6f}, std={new_weight_stats['std']:.6f}"
-				)
-				print(f"Weight change: mean={new_weight_stats['mean']-original_weight_stats['mean']:.6f}")
-			
-			# Zero out scaling vectors
-			original_lambda_d = self.lambda_d.clone()
-			original_lambda_b = self.lambda_b.clone()
-			
-			self.lambda_d.data.zero_()
+			# Reset scaling vectors (lambda_b = 0 disables delta)
+			self.lambda_d.data.fill_(1.0)
 			self.lambda_b.data.zero_()
-			
-			if self.verbose:
-				print(f"Zeroed scaling vectors:")
-				print(f"lambda_d: {original_lambda_d.tolist()} -> {self.lambda_d.tolist()}")
-				print(f"lambda_b: {original_lambda_b.tolist()} -> {self.lambda_b.tolist()}")
-				print(f"Weight merge complete")
 
 	def get_memory_footprint(self) -> dict:
 		"""Return memory usage statistics."""
@@ -2493,6 +2405,32 @@ def get_injected_peft_clip(
 		'vision_encoder': {'base_mb': 0, 'adapter_mb': 0, 'magnitude_mb': 0},
 		'shared_matrices_mb': 0  # For VeRA
 	}
+
+	# Pre-initialize VeRA shared matrices once at the full model-wide max_dim
+	# so no expansion is needed mid-injection and the trace prints cleanly once.
+	if method == "vera":
+		vera_max_dim = 0
+		for name, module in model.transformer.named_modules():
+			if isinstance(module, torch.nn.Linear) and any(t in name.split(".")[-1] for t in target_text_modules):
+				vera_max_dim = max(vera_max_dim, module.in_features, module.out_features)
+			elif isinstance(module, torch.nn.MultiheadAttention) and "in_proj" in target_text_modules:
+				vera_max_dim = max(vera_max_dim, module.embed_dim * 3)
+		for name, module in model.visual.named_modules():
+			if isinstance(module, torch.nn.Linear) and any(t in name.split(".")[-1] for t in target_vision_modules):
+				vera_max_dim = max(vera_max_dim, module.in_features, module.out_features)
+			elif isinstance(module, torch.nn.MultiheadAttention) and "in_proj" in target_vision_modules:
+				vera_max_dim = max(vera_max_dim, module.embed_dim * 3)
+		if len(target_text_modules) > 0 and hasattr(model, "text_projection") and isinstance(model.text_projection, torch.nn.Parameter):
+			vera_max_dim = max(vera_max_dim, model.text_projection.size(0), model.text_projection.size(1))
+		if len(target_vision_modules) > 0 and hasattr(model.visual, "proj") and isinstance(model.visual.proj, torch.nn.Parameter):
+			vera_max_dim = max(vera_max_dim, model.visual.proj.size(0), model.visual.proj.size(1))
+		if vera_max_dim > 0:
+			VeRALinear.initialize_shared_matrices(
+				rank=rank,
+				max_dim=vera_max_dim,
+				device=device,
+				verbose=verbose,
+			)
 	
 	def replace_linear(
 		parent: torch.nn.Module,
@@ -2513,9 +2451,13 @@ def get_injected_peft_clip(
 			'quantized': quantized,
 			'quantization_bits': quantization_bits,
 			'compute_dtype': compute_dtype,
+			'verbose': False,
 		}
 		if AdapterClass == LoRALinear:
 			kwargs['rslora'] = _use_rslora
+		elif AdapterClass == IA3Linear:
+			# Liu et al. (NeurIPS 2022): FFN c_proj scales post-GELU input activations (l_ff)
+			kwargs['is_feedforward'] = (child_name == 'c_proj')
 		adapter_layer = AdapterClass(**kwargs)
 		
 		if verbose:
@@ -2534,6 +2476,10 @@ def get_injected_peft_clip(
 				adapter_layer.linear.weight.data = module.weight.data.clone()
 				if module.bias is not None:
 					adapter_layer.linear.bias.data = module.bias.data.clone()
+
+		# DoRA: initialize magnitude m = ||W_0||_c AFTER copying pre-trained weights
+		if isinstance(adapter_layer, DoRALinear):
+			adapter_layer.init_magnitude()
 		
 		setattr(parent, child_name, adapter_layer)
 		replaced_modules.add(f"{name_prefix}: {child_name}")
@@ -2589,9 +2535,12 @@ def get_injected_peft_clip(
 				'quantized': quantized,
 				'quantization_bits': quantization_bits,
 				'compute_dtype': compute_dtype,
+				'verbose': False,
 			}
 			if AdapterClass == LoRALinear:
 				kwargs['rslora'] = _use_rslora
+			elif AdapterClass == IA3Linear:
+				kwargs['scale_kv_only'] = True
 			
 			if verbose:
 				print(f"kwargs: {kwargs}")
@@ -2605,6 +2554,9 @@ def get_injected_peft_clip(
 				else:
 					adapter_layer.linear.weight.data = module.in_proj_weight.data.clone()
 					adapter_layer.linear.bias.data = module.in_proj_bias.data.clone()
+
+			if isinstance(adapter_layer, DoRALinear):
+				adapter_layer.init_magnitude()
 			
 			module.in_proj_weight = adapter_layer.linear.weight
 			module.in_proj_bias = adapter_layer.linear.bias
@@ -2664,9 +2616,12 @@ def get_injected_peft_clip(
 				'quantized': quantized,
 				'quantization_bits': quantization_bits,
 				'compute_dtype': compute_dtype,
+				'verbose': False,
 			}
 			if AdapterClass == LoRALinear:
 				kwargs['rslora'] = _use_rslora
+			elif AdapterClass == IA3Linear:
+				kwargs['scale_kv_only'] = True
 
 			if verbose:
 				print(f"kwargs: {kwargs}")
@@ -2680,6 +2635,9 @@ def get_injected_peft_clip(
 				else:
 					adapter_layer.linear.weight.data = module.in_proj_weight.data.clone()
 					adapter_layer.linear.bias.data = module.in_proj_bias.data.clone()
+
+			if isinstance(adapter_layer, DoRALinear):
+				adapter_layer.init_magnitude()
 			
 			module.in_proj_weight = adapter_layer.linear.weight
 			module.in_proj_bias = adapter_layer.linear.bias
@@ -2739,7 +2697,15 @@ def get_injected_peft_clip(
 	if verbose: 
 		print(f"\n[{method_name} PROJECTIONS ADAPTATION]")
 
-	if hasattr(model, "text_projection") and isinstance(model.text_projection, torch.nn.Parameter):
+	# Gate text_projection adaptation on target_text_modules being non-empty (and exclude IA³, which only scales K, V, FFN).
+	# Leaving model.text_projection untouched when target_text_modules=[] prevents dead text-side parameters
+	# and prevents DoRA from altering pre-encoded frozen class embeddings.
+	if (
+		len(target_text_modules) > 0
+		and method != "ia3"
+		and hasattr(model, "text_projection")
+		and isinstance(model.text_projection, torch.nn.Parameter)
+	):
 		in_dim = model.text_projection.size(0)
 		out_dim = model.text_projection.size(1)
 		if verbose:
@@ -2759,6 +2725,7 @@ def get_injected_peft_clip(
 			'quantized': quantized,
 			'quantization_bits': quantization_bits,
 			'compute_dtype': compute_dtype,
+			'verbose': False,
 		}
 		if AdapterClass == LoRALinear:
 			kwargs['rslora'] = _use_rslora
@@ -2773,7 +2740,11 @@ def get_injected_peft_clip(
 				adapter_text_proj.linear.weight.data.copy_(model.text_projection.t().data)
 			else:
 				adapter_text_proj.linear.weight.data = model.text_projection.t().data.clone()
+		if isinstance(adapter_text_proj, DoRALinear):
+			adapter_text_proj.init_magnitude()
 		
+		# Unregister orphaned duplicate standalone text_projection parameter
+		model.text_projection = None
 		setattr(model, f"{method}_text_projection", adapter_text_proj)
 		
 		def encode_text(self, text):
@@ -2784,7 +2755,10 @@ def get_injected_peft_clip(
 			x = x.permute(1, 0, 2)
 			x = self.ln_final(x).type(self.dtype)
 			x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
-			return getattr(self, f"{method}_text_projection")(x)
+			x = getattr(self, f"{method}_text_projection")(x)
+			if hasattr(self, "dropout"):
+				x = self.dropout(x)
+			return x
 		
 		model.encode_text = encode_text.__get__(model, type(model))
 		replaced_modules.add("Text: text_projection")
@@ -2815,9 +2789,16 @@ def get_injected_peft_clip(
 			else:
 				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f} MB"
 			print(f"{statement}\n")
+	elif verbose:
+		print(f"  ├─ Skipping text_projection (target_text_modules={target_text_modules}, method={method})")
 	
-	# Visual projection (ViT)
-	if hasattr(model.visual, "proj") and isinstance(model.visual.proj, torch.nn.Parameter):
+	# Visual projection (ViT) — excluded for IA³ (which only targets attention K, V and post-GELU FFN)
+	if (
+		len(target_vision_modules) > 0
+		and method != "ia3"
+		and hasattr(model.visual, "proj")
+		and isinstance(model.visual.proj, torch.nn.Parameter)
+	):
 		in_dim = model.visual.proj.size(0)
 		out_dim = model.visual.proj.size(1)
 		if verbose:
@@ -2837,6 +2818,7 @@ def get_injected_peft_clip(
 			'quantized': quantized,
 			'quantization_bits': quantization_bits,
 			'compute_dtype': compute_dtype,
+			'verbose': False,
 		}
 		if AdapterClass == LoRALinear:
 			kwargs['rslora'] = _use_rslora
@@ -2851,7 +2833,11 @@ def get_injected_peft_clip(
 				adapter_visual_proj.linear.weight.data.copy_(model.visual.proj.t().data)
 			else:
 				adapter_visual_proj.linear.weight.data = model.visual.proj.t().data.clone()
+		if isinstance(adapter_visual_proj, DoRALinear):
+			adapter_visual_proj.init_magnitude()
 		
+		# Unregister orphaned duplicate standalone visual.proj parameter
+		model.visual.proj = None
 		setattr(model.visual, f"{method}_proj", adapter_visual_proj)
 		
 		def vit_forward(self, x: torch.Tensor):
@@ -2870,6 +2856,7 @@ def get_injected_peft_clip(
 			x = x.permute(1, 0, 2)
 			x = self.ln_post(x[:, 0, :])
 			x = getattr(self, f"{method}_proj")(x)
+			x = self.dropout(x)
 			return x
 		
 		model.visual.forward = vit_forward.__get__(model.visual, type(model.visual))
@@ -2901,14 +2888,16 @@ def get_injected_peft_clip(
 			else:
 				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f} MB"
 			print(f"{statement}\n")
+	elif verbose:
+		print(f"  └─ Skipping visual.proj (target_vision_modules={target_vision_modules}, method={method})")
 	############################################## Projections ##############################################	
 
 	# Calculate shared matrix memory for VeRA (counted only once, not per-layer)
 	if method == "vera":
 		# Get actual max_dim from shared matrices
-		key = (rank, device)
+		key = (rank, torch.device(device))
 		if key in VeRALinear._shared_matrices:
-			_, _, max_dim = VeRALinear._shared_matrices[key]
+			_, _, max_dim, _ = VeRALinear._shared_matrices[key]
 			shared_A_mb = (rank * max_dim * 4) / (1024 ** 2)
 			shared_B_mb = (max_dim * rank * 4) / (1024 ** 2)
 			memory_stats['shared_matrices_mb'] = shared_A_mb + shared_B_mb
@@ -3042,8 +3031,13 @@ def get_injected_peft_clip(
 										f"weight_aliased={weight_aliased}"
 								)
 				# ── per-method out_proj verification ─────────────────────────────
-				out_proj_ok   = False
-				out_proj_info = "NOT adapted"
+				expect_out_proj = (
+					("out_proj" in target_text_modules)
+					if encoder_name == "Text"
+					else ("out_proj" in target_vision_modules)
+				)
+				out_proj_ok   = not expect_out_proj
+				out_proj_info = "NOT adapted (expected)" if not expect_out_proj else "NOT adapted"
 				if isinstance(module.out_proj, IA3Linear):
 						out_proj_ok   = hasattr(module.out_proj, 'ia3_scale')
 						out_proj_info = f"ia3_scale={module.out_proj.ia3_scale.shape}"
@@ -3069,15 +3063,23 @@ def get_injected_peft_clip(
 				shape_info      = "N/A"
 				if has_in_proj and in_proj_ok:
 						if isinstance(in_proj_adapter, IA3Linear):
-								delta          = in_proj_adapter.ia3_scale.unsqueeze(1) * in_proj_adapter.linear.weight
+								if in_proj_adapter.scale_kv_only:
+									embed_dim = in_proj_adapter.out_features // 3
+									full_scale = torch.cat([
+										torch.ones(embed_dim, device=in_proj_adapter.ia3_scale.device, dtype=in_proj_adapter.ia3_scale.dtype),
+										in_proj_adapter.ia3_scale,
+									])
+								else:
+									full_scale = in_proj_adapter.ia3_scale
+								delta           = full_scale.unsqueeze(1) * in_proj_adapter.linear.weight
 								weight_shape_ok = delta.shape == module.in_proj_weight.shape
 								shape_info      = (
 										f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
 										f"delta_norm={delta.norm().item()}"
 								)
 						elif isinstance(in_proj_adapter, VeRALinear):
-								BLd             = in_proj_adapter.vera_B * in_proj_adapter.lambda_d.unsqueeze(0)
-								delta           = (BLd @ in_proj_adapter.vera_A) * in_proj_adapter.lambda_b.unsqueeze(1)
+								BLd             = (in_proj_adapter.vera_B * in_proj_adapter.scale_B) * in_proj_adapter.lambda_d.unsqueeze(0)
+								delta           = (BLd @ (in_proj_adapter.vera_A * in_proj_adapter.scale_A)) * in_proj_adapter.lambda_b.unsqueeze(1)
 								weight_shape_ok = delta.shape == module.in_proj_weight.shape
 								shape_info      = (
 										f"delta={delta.shape} matches_in_proj={weight_shape_ok} "

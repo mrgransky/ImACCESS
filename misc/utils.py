@@ -1,6 +1,7 @@
 import re
 import os
 import sys
+import math
 import time
 import json
 import textwrap
@@ -821,13 +822,13 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 	# DoRA: magnitude vectors must equal column-norms of W_pretrained → strictly positive
 	if 'dora' in mode_l:
 			contract_checked = True
-			dora_scales = [(n, p) for n, p in named if 'dora_scale' in n.lower()]
+			dora_scales = [(n, p) for n, p in named if 'magnitude' in n.lower() and p.requires_grad]
 			if dora_scales:
 					all_pos = all((p.detach() > 0).all() for _, p in dora_scales)
 					print(f"    {'✅' if all_pos else '❌'} DoRA: {len(dora_scales)} magnitude vectors "
 								f"{'all positive' if all_pos else 'NOT all positive (must equal ||W|| columns)'}")
 			else:
-					print(f"    ⚠️  DoRA mode but no 'dora_scale' parameters found")
+					print(f"    ⚠️  DoRA mode but no 'magnitude' parameters found")
 	# VeRA: λb zero-init, λd small random
 	if 'vera' in mode_l:
 			contract_checked = True
@@ -1046,9 +1047,28 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 		'adapter_module_count': len(adapter_modules),
 	}
 
+def build_cosine_scheduler(
+	optimizer: torch.optim.Optimizer,
+	T_max: int,
+	floor: float = 1e-2,
+) -> torch.optim.lr_scheduler.LambdaLR:
+	"""
+	Multiplicative cosine annealing scheduler that:
+	1. Matches CosineAnnealingLR(eta_min = base_lr * floor) identically for single-LR optimizers up to T_max,
+	2. Preserves exact per-group LR ratios (e.g. LoRA+ η_B / η_A ≡ λ) across all steps, and
+	3. Clamps cleanly at `floor` if training runs past T_max (no unintended LR rebound).
+	"""
+	T_max = max(1, int(T_max))
+	def factor(step: int) -> float:
+		t = min(step, T_max) / T_max
+		return floor + (1.0 - floor) * 0.5 * (1.0 + math.cos(math.pi * t))
+	return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=factor)
+
 def get_parameters_info_orig(model, mode):
 	# Helper function to calculate parameters for a submodule or parameter
 	def count_params(item):
+		if item is None:
+			return 0, 0, 0
 		if isinstance(item, torch.nn.Module):
 			trainable = sum(p.numel() for p in item.parameters() if p.requires_grad)
 			frozen = sum(p.numel() for p in item.parameters() if not p.requires_grad)
@@ -1074,8 +1094,14 @@ def get_parameters_info_orig(model, mode):
 	img_trainable_percent = (img_trainable / img_total) * 100 if img_total > 0 else 0
 	img_frozen_percent = (img_frozen / img_total) * 100 if img_total > 0 else 0
 
-	# Text encoder parameters (assuming 'transformer', 'token_embedding', 'ln_final', 'text_projection')
-	text_submodules = [model.transformer, model.token_embedding, model.ln_final, model.text_projection]
+	# Text encoder parameters (includes adapted text_projection module if present)
+	adapted_text_proj = getattr(model, f"{mode}_text_projection", None)
+	text_submodules = [
+		model.transformer,
+		model.token_embedding,
+		model.ln_final,
+		adapted_text_proj if adapted_text_proj is not None else getattr(model, "text_projection", None),
+	]
 	text_trainable = sum(count_params(m)[0] for m in text_submodules)
 	text_frozen = sum(count_params(m)[1] for m in text_submodules)
 	text_total = sum(count_params(m)[2] for m in text_submodules)

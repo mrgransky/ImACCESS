@@ -86,12 +86,12 @@ def check_training_health(
 				f"({relative_delta*100:.3f}% change)"
 			)
 
-	# ── Signal 2: AlignScore frozen (universal) ───────────────────────────
+	# ── Signal 2: AlignScore frozen / collapsed (universal) ──────────────
 	if (
 		align_score is not None
 		and align_score == align_score  # not NaN
-		and epoch >= 1
-		and align_score < 0.005
+		and epoch >= 0
+		and align_score < 0.02
 	):
 		issues.append(f"AlignScore@5 critically low: {align_score:.6f}")
 
@@ -140,7 +140,7 @@ def check_training_health(
 			deltas = [
 					(p.data - 1.0).abs().mean().item()
 					for n, p in model.named_parameters()
-					if p.requires_grad and "scaling" in n
+					if p.requires_grad and "ia3_scale" in n
 			]
 			if deltas:
 					delta_mean = sum(deltas) / len(deltas)

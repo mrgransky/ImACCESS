@@ -438,11 +438,10 @@ def probe_multi_label(
 	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+	scheduler = build_cosine_scheduler(
 		optimizer=optimizer,
 		T_max=T_max,
-		eta_min=eta_min,
-		last_epoch=-1,
+		floor=ANNEALING_RATIO,
 	)
 	
 	if verbose:
@@ -1138,11 +1137,10 @@ def full_finetune_multi_label(
 	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+	scheduler = build_cosine_scheduler(
 		optimizer=optimizer,
 		T_max=T_max,
-		eta_min=eta_min,
-		last_epoch=-1,
+		floor=ANNEALING_RATIO,
 	)
 	
 	if verbose:
@@ -1671,11 +1669,10 @@ def lora_finetune_multi_label(
 	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+	scheduler = build_cosine_scheduler(
 		optimizer=optimizer,
 		T_max=T_max,
-		eta_min=eta_min,
-		last_epoch=-1,
+		floor=ANNEALING_RATIO,
 	)
 	
 	if verbose:
@@ -2170,26 +2167,29 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ Unassigned params: {len(ungrouped)} tensors")
 		print(f"  └─ LR multiplier (λ): {lora_plus_lambda}")
 	
-	# Optimizer with differential learning rates
+	# Optimizer with differential learning rates (Hayou et al., ICML 2024: symmetric weight decay on A and B)
 	lora_A_lr = learning_rate
 	lora_A_wd = weight_decay
 
 	lora_B_lr = learning_rate * lora_plus_lambda
-	lora_B_wd = 0.0
+	lora_B_wd = weight_decay
+	lora_plus_params = [
+		{
+			'params': lora_A_params,
+			'lr': lora_A_lr,
+			'weight_decay': lora_A_wd,
+		},
+		{
+			'params': lora_B_params,
+			'lr': lora_B_lr,
+			'weight_decay': lora_B_wd,
+		},
+	]
 
 	optimizer = torch.optim.AdamW(
-		params=[
-			{
-				'params': lora_A_params,
-				'lr': lora_A_lr,
-				'weight_decay': lora_A_wd,
-			},
-			{
-				'params': lora_B_params,
-				'lr': lora_B_lr,
-				'weight_decay': lora_B_wd,
-			},
-		],
+		params=lora_plus_params,
+		betas=(0.9, 0.98),
+		eps=1e-6,
 	)
 
 	if verbose:
@@ -2197,12 +2197,14 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ LR: lora_A = {lora_A_lr} lora_B = {lora_B_lr} (λ={lora_plus_lambda})")
 		print(f"  ├─ WD: lora_A = {lora_A_wd} lora_B = {lora_B_wd}")
 		print(f"  └─ Params: lora_A: {sum(p.numel() for p in lora_A_params):,} lora_B: {sum(p.numel() for p in lora_B_params):,}")
+
 		get_parameters_info(
 			model=model, 
 			mode=mode, 
 			optimizer=optimizer, 
 			verbose=verbose
 		)
+
 		get_parameters_info_orig(model=model, mode=mode)
 
 	# Scheduler
@@ -2211,11 +2213,10 @@ def lora_plus_finetune_multi_label(
 	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+	scheduler = build_cosine_scheduler(
 		optimizer=optimizer,
 		T_max=T_max,
-		eta_min=eta_min,
-		last_epoch=-1,
+		floor=ANNEALING_RATIO,
 	)
 	
 	if verbose:
@@ -2433,14 +2434,14 @@ def lora_plus_finetune_multi_label(
 			if torch.isnan(grad_norm) or torch.isinf(grad_norm):
 				print(f"[WARNING] Corrupt grad_norm at epoch {epoch+1} batch {bidx+1}: {grad_norm} | isnan(): {torch.isnan(grad_norm)} | isinf(): {torch.isinf(grad_norm)}")
 
-				optimizer.zero_grad(set_to_none=True)
-
-				# purge Adam state for any param whose grad was NaN
+				# purge Adam state for any param whose grad was NaN/Inf BEFORE clearing grads
 				for group in optimizer.param_groups:
 					for p in group['params']:
 						if p.grad is not None and (torch.isnan(p.grad).any() or torch.isinf(p.grad).any()):
 							if p in optimizer.state:
 								optimizer.state[p] = {}
+
+				optimizer.zero_grad(set_to_none=True)
 
 				if scaler is not None:
 					if cuda_capability[0] < 8:
@@ -2968,11 +2969,10 @@ def rslora_finetune_multi_label(
 	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+	scheduler = build_cosine_scheduler(
 		optimizer=optimizer,
 		T_max=T_max,
-		eta_min=eta_min,
-		last_epoch=-1,
+		floor=ANNEALING_RATIO,
 	)
 	
 	if verbose:
@@ -3062,6 +3062,7 @@ def rslora_finetune_multi_label(
 
 			# Check for NaN loss
 			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				nan_loss_count += 1
 				print(
 					f"[WARNING] e{epoch+1} b{bidx+1}: "
 					f"total_loss: {total_loss} "
@@ -3510,23 +3511,26 @@ def dora_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	# Optimizer setup
-	dora_params = [p for p in model.parameters() if p.requires_grad]
+	# Optimizer setup: exclude 1D DoRA magnitude vectors from weight decay (only decay 2D LoRA A/B matrices)
+	dora_matrix_params = [p for n, p in model.named_parameters() if p.requires_grad and "magnitude" not in n]
+	dora_magnitude_params = [p for n, p in model.named_parameters() if p.requires_grad and "magnitude" in n]
+	dora_params = dora_matrix_params + dora_magnitude_params
 	optimizer = torch.optim.AdamW(
-		params=dora_params,
+		params=[
+			{"params": dora_matrix_params, "weight_decay": weight_decay},
+			{"params": dora_magnitude_params, "weight_decay": 0.0},
+		],
 		lr=learning_rate,
 		betas=(0.9, 0.98),
 		eps=1e-6,
-		weight_decay=weight_decay,
 	)
 
 	if verbose:
 		print(f"\n{optimizer.__class__.__name__}")
-		print(f"  ├─ Params: {sum(p.numel() for p in dora_params):,}")
+		print(f"  ├─ Params: {sum(p.numel() for p in dora_params):,} (matrices: {sum(p.numel() for p in dora_matrix_params):,} wd={weight_decay} | magnitude: {sum(p.numel() for p in dora_magnitude_params):,} wd=0.0)")
 		print(f"  ├─ LR: {learning_rate}")
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
-		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
-		print(f"  └─ Weight Decay: {weight_decay}")
+		print(f"  └─ Eps: {optimizer.defaults['eps']}")
 
 	# Scheduler
 	# approximate T_max: N epochs * minimum_epochs
@@ -3534,11 +3538,10 @@ def dora_finetune_multi_label(
 	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+	scheduler = build_cosine_scheduler(
 		optimizer=optimizer,
 		T_max=T_max,
-		eta_min=eta_min,
-		last_epoch=-1,
+		floor=ANNEALING_RATIO,
 	)
 	
 	if verbose:
@@ -4108,7 +4111,7 @@ def vera_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	# Optimizer
+	# Optimizer: 1D VeRA scaling vectors (lambda_d initialized to 1.0, lambda_b to 0.0) must not be decayed toward 0
 	vera_params = [p for p in model.parameters() if p.requires_grad]
 
 	optimizer = torch.optim.AdamW(
@@ -4116,7 +4119,7 @@ def vera_finetune_multi_label(
 		lr=learning_rate,
 		betas=(0.9, 0.98),
 		eps=1e-6,
-		weight_decay=weight_decay,
+		weight_decay=0.0,
 	)
 
 	if verbose:
@@ -4125,7 +4128,7 @@ def vera_finetune_multi_label(
 		print(f"  ├─ LR: {learning_rate}")
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
-		print(f"  └─ Weight Decay: {weight_decay}")
+		print(f"  └─ Weight Decay: 0.0 (disabled for 1D VeRA scaling vectors; CLI weight_decay={weight_decay})")
 
 	# Scheduler
 	# approximate T_max: N epochs * minimum_epochs
@@ -4133,11 +4136,10 @@ def vera_finetune_multi_label(
 	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+	scheduler = build_cosine_scheduler(
 		optimizer=optimizer,
 		T_max=T_max,
-		eta_min=eta_min,
-		last_epoch=-1,
+		floor=ANNEALING_RATIO,
 	)
 	
 	if verbose:
@@ -4683,7 +4685,7 @@ def ia3_finetune_multi_label(
 		alpha=1.0,  # Not used for (IA)³, but required by function signature
 		dropout=0.0,  # Not used for (IA)³, but required by function signature
 		target_text_modules=[], # no (IA)³ in text encoder
-		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+		target_vision_modules=["in_proj", "c_proj"],  # Liu et al. (NeurIPS 2022): attention K, V (in_proj) + post-GELU FFN (c_proj)
 		quantization_bits=quantization_bits,
 		quantized=quantized,
 		verbose=verbose,
@@ -4733,14 +4735,14 @@ def ia3_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	# Optimizer
+	# Optimizer: multiplicative (IA)³ scaling vectors (initialized to 1.0) must not be decayed toward 0.0
 	ia3_params = [p for p in model.parameters() if p.requires_grad]
 	optimizer = torch.optim.AdamW(
 		params=ia3_params,
 		lr=learning_rate,
 		betas=(0.9, 0.98),
 		eps=1e-6,
-		weight_decay=weight_decay,
+		weight_decay=0.0,
 	)
 	
 	if verbose:
@@ -4749,7 +4751,7 @@ def ia3_finetune_multi_label(
 		print(f"  ├─ LR: {learning_rate}")
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
-		print(f"  └─ Weight Decay: {weight_decay}")
+		print(f"  └─ Weight Decay: 0.0 (disabled for multiplicative (IA)³ scales; CLI weight_decay={weight_decay})")
 
 	# Scheduler
 	# approximate T_max: N epochs * minimum_epochs
@@ -4757,11 +4759,10 @@ def ia3_finetune_multi_label(
 	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+	scheduler = build_cosine_scheduler(
 		optimizer=optimizer,
 		T_max=T_max,
-		eta_min=eta_min,
-		last_epoch=-1,
+		floor=ANNEALING_RATIO,
 	)
 	
 	if verbose:
@@ -5100,7 +5101,7 @@ def ia3_finetune_multi_label(
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
-		text_to_image_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 
@@ -5296,11 +5297,10 @@ def clip_adapter_finetune_multi_label(
 	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+	scheduler = build_cosine_scheduler(
 		optimizer=optimizer,
 		T_max=T_max,
-		eta_min=eta_min,
-		last_epoch=-1,
+		floor=ANNEALING_RATIO,
 	)
 	
 	if verbose:
@@ -6039,11 +6039,10 @@ def tip_adapter_finetune_multi_label(
 		T_max = estimated_epochs * len(train_loader)
 		ANNEALING_RATIO = 1e-2 # 1% of initial LR
 		eta_min = learning_rate * ANNEALING_RATIO
-		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+		scheduler = build_cosine_scheduler(
 			optimizer=optimizer,
 			T_max=T_max,
-			eta_min=eta_min,
-			last_epoch=-1,
+			floor=ANNEALING_RATIO,
 		)
 		
 		if verbose:
