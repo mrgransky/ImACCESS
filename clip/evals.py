@@ -386,7 +386,7 @@ def compute_tiered_retrieval_metrics(
 			if verbose:
 				avg_pos_per_q = tier_query_labels.sum(dim=1).float().mean().item()
 				print(
-					f"  [I2T {tier_name.upper():7s} SETUP] "
+					f"[I2T {tier_name.upper():7s} SETUP] "
 					f"candidate_pool={len(pool_idx):,} | relevant_tier_cls={int(in_tier.sum().item()):,} | "
 					f"val_queries={tier_sim.shape[0]:,}/{query_labels.shape[0]:,} | "
 					f"avg_tier_pos/img={avg_pos_per_q:.2f} | other_tier_pos_masked={n_other_tier_masked:,}"
@@ -406,7 +406,7 @@ def compute_tiered_retrieval_metrics(
 			if verbose:
 				pos_per_cls = tier_candidate_labels.sum(dim=0).float()
 				print(
-					f"  [T2I {tier_name.upper():7s} SETUP] "
+					f"[T2I {tier_name.upper():7s} SETUP] "
 					f"query_classes={len(tier_indices):,} | candidate_val_images={tier_sim.shape[1]:,} | "
 					f"val_pos/class: min={int(pos_per_cls.min().item())} max={int(pos_per_cls.max().item())} "
 					f"med={pos_per_cls.median().item():.0f}"
