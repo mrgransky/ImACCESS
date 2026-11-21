@@ -928,364 +928,272 @@ class VeRALinear(torch.nn.Module):
 
 class TipAdapterLinear(torch.nn.Module):
 	"""
-	Tip-Adapter: Training-free Adaption of CLIP for Few-shot Classification (ECCV 2022)
-	
-	CORRECTIONS:
-	1. Added L2 normalization before similarity computation (CRITICAL)
-	2. Proper cache-based retrieval mechanism
-	3. Configurable beta and alpha scaling
-	
-	Forward: 
-		1. Normalize query features: q = x / ||x||
-		2. Normalize cache keys: k = cache_keys / ||cache_keys||
-		3. Compute similarity: S = q @ k.T
-		4. Compute weights: w = exp(β * S) / Σ exp(β * S)
-		5. Retrieve values: v = w @ cache_values
-		6. Output: x + α * v (or just α * v for classification)
-	
-	Args:
-		cache_features_dim: Dimension of cached features (text embedding dim)
-		device: Device to place parameters
-		initial_beta: Initial temperature parameter (default: 1.0, tuned via validation)
-		initial_alpha: Initial scaling for retrieved features (default: 1.0)
-		trainable_params: If True, beta and alpha are trainable (for fine-tuning)
-		verbose: Enable debug prints
+	Tip-Adapter: Training-Free Adaption of CLIP for Few-Shot Classification (Zhang et al., ECCV 2022)
+
+	Exact logit-space key-value cache formulation (Eq. 4-5):
+		clip_logits  = (f_norm @ W_c.T) / temperature
+		affinity     = f_norm @ K_norm.T                       in [-1, 1]
+		kernel       = exp(-beta * (1 - affinity))             in (0, 1]
+		cache_logits = kernel @ L_val                          in [0, 1]  (column-normalized for multi-label)
+		tip_logits   = clip_logits + alpha * cache_logits
+
+	Notes:
+		- Entire CLIP visual and text encoders remain completely frozen.
+		- Cache keys K_norm ∈ R^{M × D} are L2-normalized frozen visual features of deduplicated support images.
+		- Cache values L_val ∈ R^{M × C} are one-hot (single-label) or column-normalized multi-hot (multi-label)
+		  label vectors so head, body, and rare classes share identical [0, 1] cache affinity scale while
+		  inactive classes (0 support shots) remain 0 and fall back identically to zero-shot CLIP.
+		- alpha and beta are non-trainable hyperparameters tuned via validation grid search (no SGD/AdamW).
 	"""
-	
+
 	def __init__(
 		self,
 		cache_features_dim: int,
 		device: Union[str, torch.device],
-		initial_beta: float = 1.0,
+		initial_beta: float = 5.5,
 		initial_alpha: float = 1.0,
-		trainable_params: bool = False,
+		trainable_keys: bool = False,
 		verbose: bool = True,
 	):
 		super(TipAdapterLinear, self).__init__()
-		
+
 		self.cache_features_dim = cache_features_dim
-		self.device = device
+		self.device = torch.device(device)
+		self.trainable_keys = trainable_keys
 		self.verbose = verbose
-		
-		if self.verbose:
-			print(f"[Tip-Adapter] Initializing TipAdapterLinear")
-			print(f"    ├─ Cache feature dim: {cache_features_dim}")
-			print(f"    ├─ Initial β (temperature): {initial_beta}")
-			print(f"    ├─ Initial α (scaling): {initial_alpha}")
-			print(f"    └─ Trainable params: {trainable_params}")
-		
-		# Cache buffers (will be filled via set_cache)
-		self.register_buffer('cache_keys', torch.empty(0, cache_features_dim, device=device))
-		self.register_buffer('cache_values', torch.empty(0, cache_features_dim, device=device))
-		
-		# Scaling parameters
-		self.beta = torch.nn.Parameter(torch.tensor(initial_beta, device=device))
-		self.alpha = torch.nn.Parameter(torch.tensor(initial_alpha, device=device))
-		
-		# Set trainability
-		self.beta.requires_grad = trainable_params
-		self.alpha.requires_grad = trainable_params
 
-	def set_cache(
-		self, 
-		support_features: torch.Tensor, 
-		support_labels: torch.Tensor,
-		text_features: torch.Tensor
-	):
-		"""
-		Set the cache for Tip-Adapter.
-		Works for both single-label [N] and multi-label [N, C] inputs.
-		"""
-		assert support_features.shape[1] == self.cache_features_dim
-		assert text_features.shape[1] == self.cache_features_dim
-		# Normalize support features (keys)
-		cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
-		# Handle single-label or multi-label
-		if support_labels.dim() == 1:
-			# Single-label: index each sample's class text embedding
-			cache_values = text_features[support_labels]
+		if self.verbose:
+			print(f"[{self.__class__.__name__}] Initializing")
+			print(f"    ├─ Cache feature dim : {cache_features_dim}")
+			print(f"    ├─ Initial β (sharp) : {initial_beta}")
+			print(f"    ├─ Initial α (scale) : {initial_alpha}")
+			print(f"    └─ Trainable keys    : {trainable_keys}")
+
+		# Cache keys: trainable Parameter for Tip-Adapter-F, frozen buffer for Tip-Adapter
+		empty_keys = torch.empty(0, cache_features_dim, device=self.device, dtype=torch.float32)
+		if self.trainable_keys:
+			self.cache_keys = torch.nn.Parameter(empty_keys, requires_grad=True)
 		else:
-			# Multi-label: support_labels is [N, num_classes] with 0-1 entries
-			# Compute weighted sum of text embeddings for active labels
-			label_weights = support_labels.float()
-			cache_values = label_weights @ text_features  # [N, D]
-			# Normalize by number of active labels to avoid magnitude issues
-			class_counts = label_weights.sum(dim=-1, keepdim=True).clamp(min=1.0)
-			cache_values = cache_values / class_counts
-		cache_values = torch.nn.functional.normalize(cache_values, p=2, dim=-1)
-		
-		# Register buffers on correct device
-		self.cache_keys = cache_keys.to(self.device)
-		self.cache_values = cache_values.to(self.device)
-		
+			self.register_buffer('cache_keys', empty_keys)
+
+		# Frozen cache values [M, C] and frozen normalized class text embeddings [C, D]
+		self.register_buffer('cache_values', torch.empty(0, 0, device=self.device, dtype=torch.float32))
+		self.register_buffer('text_features', torch.empty(0, cache_features_dim, device=self.device, dtype=torch.float32))
+
+		# Non-trainable hyperparameters (tuned via validation grid search per Zhang et al., ECCV 2022)
+		self.register_buffer('beta', torch.tensor(float(initial_beta), device=self.device, dtype=torch.float32))
+		self.register_buffer('alpha', torch.tensor(float(initial_alpha), device=self.device, dtype=torch.float32))
+
+	@torch.no_grad()
+	def set_alpha_beta(self, alpha: float, beta: float) -> None:
+		"""Update alpha and beta scalar buffers (e.g. after validation grid search)."""
+		self.alpha.fill_(float(alpha))
+		self.beta.fill_(float(beta))
+
+	@torch.no_grad()
+	def set_cache(
+		self,
+		support_features: torch.Tensor,
+		support_labels: torch.Tensor,
+		text_features: torch.Tensor,
+		normalize_by_class_count: bool = True,
+	) -> None:
+		"""
+		Populate the Tip-Adapter key-value cache in class logit space.
+		Supports both single-label [M] (class indices) and multi-label [M, C] (binary multi-hot) inputs.
+		"""
+		assert support_features.dim() == 2 and support_features.shape[1] == self.cache_features_dim, (
+			f"Expected support_features [M, {self.cache_features_dim}], got {tuple(support_features.shape)}"
+		)
+		assert text_features.dim() == 2 and text_features.shape[1] == self.cache_features_dim, (
+			f"Expected text_features [C, {self.cache_features_dim}], got {tuple(text_features.shape)}"
+		)
+
+		num_classes = text_features.shape[0]
+		support_features_fp32 = support_features.detach().float()
+		text_features_fp32 = torch.nn.functional.normalize(text_features.detach().float(), p=2, dim=-1)
+
+		# Filter invalid/zero-padded support entries consistently for BOTH Tip-Adapter and Tip-Adapter-F
+		feat_valid = support_features_fp32.norm(dim=-1) > 1e-6
+		if support_labels.dim() == 1:
+			label_valid = (support_labels >= 0) & (support_labels < num_classes)
+		else:
+			assert support_labels.shape[1] == num_classes, (
+				f"support_labels has {support_labels.shape[1]} classes, expected {num_classes}"
+			)
+			label_valid = support_labels.float().sum(dim=-1) > 0
+		valid_mask = (feat_valid & label_valid.to(feat_valid.device))
+
+		n_total = valid_mask.shape[0]
+		support_features_valid = support_features_fp32[valid_mask]
+		support_labels_valid = support_labels[valid_mask.to(support_labels.device)]
+
+		# Normalized support visual features as cache keys [M, D]
+		cache_keys = torch.nn.functional.normalize(support_features_valid, p=2, dim=-1).to(
+			device=self.device, dtype=torch.float32
+		)
+
+		# Label matrix as cache values [M, C] (Zhang et al., ECCV 2022 Eq. 4)
+		if support_labels_valid.dim() == 1:
+			cache_values = torch.nn.functional.one_hot(
+				support_labels_valid.long(), num_classes=num_classes
+			).float()
+		else:
+			cache_values = support_labels_valid.detach().float()
+
+		# Column-normalize by active class count so head/body/rare classes share [0, 1] cache scale
+		# while inactive classes (count == 0) remain 0 and fall back cleanly to zero-shot CLIP.
+		if normalize_by_class_count and cache_values.shape[0] > 0:
+			class_counts = cache_values.sum(dim=0, keepdim=True)  # [1, C]
+			cache_values = cache_values / class_counts.clamp(min=1.0)
+
+		cache_values = cache_values.to(device=self.device, dtype=torch.float32)
+		text_features_norm = text_features_fp32.to(device=self.device, dtype=torch.float32)
+
+		if self.trainable_keys:
+			self.cache_keys = torch.nn.Parameter(cache_keys.clone(), requires_grad=True)
+		else:
+			self.cache_keys = cache_keys
+		self.cache_values = cache_values
+		self.text_features = text_features_norm
+
 		if self.verbose:
-			n_support = self.cache_keys.shape[0]
-			print(f"[Tip-Adapter] Cache set: {n_support} support samples")
-			print(f"    ├─ Keys: {self.cache_keys.shape}")
-			print(f"    ├─ Values: {self.cache_values.shape}")
-			print(f"    ├─ Keys normalized: {torch.allclose(self.cache_keys.norm(dim=-1), torch.ones(1, device=self.device))}")
-			print(f"    └─ Values normalized: {torch.allclose(self.cache_values.norm(dim=-1), torch.ones(1, device=self.device))}")
-	
-	def forward(self, x: torch.Tensor, return_similarity: bool = False) -> torch.Tensor:
-		"""
-		Forward pass with cache-based adaptation.
-		
-		Args:
-			x: Query features [batch_size, cache_features_dim]
-			return_similarity: If True, also return the similarity matrix
-		
-		Returns:
-			Adapted features [batch_size, cache_features_dim]
-		"""
-		if self.cache_keys.shape[0] == 0:
-			if self.verbose:
-				print("[Tip-Adapter] Warning: Cache is empty, returning input unchanged")
-			return x
-		
-		# CRITICAL: Normalize query features
-		x_norm = torch.nn.functional.normalize(x, p=2, dim=-1)
-		
-		# Compute cosine similarity with cache keys
-		# Shape: [batch_size, N_support]
-		similarity = x_norm @ self.cache_keys.T
-		
-		# Apply softmax with temperature (beta)
-		# Shape: [batch_size, N_support]
-		weights = torch.nn.functional.softmax(self.beta * similarity, dim=-1)
-		
-		# Retrieve corresponding cache values (text features)
-		# Shape: [batch_size, cache_features_dim]
-		retrieved = weights @ self.cache_values
-		
-		# Combine with original features
-		# For classification: output = x + alpha * retrieved
-		# The alpha controls the influence of the cache
-		output = x + self.alpha * retrieved
+			n_cache = self.cache_keys.shape[0]
+			covered_classes = int((self.cache_values.sum(dim=0) > 0).sum().item()) if n_cache > 0 else 0
+			print(f"\n[{self.__class__.__name__}] Cache set: {n_cache:,} support samples (filtered from {n_total:,})")
+			print(f"    ├─ Keys          : {tuple(self.cache_keys.shape)} (trainable={self.trainable_keys})")
+			print(f"    ├─ Values        : {tuple(self.cache_values.shape)} (covered classes: {covered_classes:,}/{num_classes:,})")
+			print(f"    ├─ Text features : {tuple(self.text_features.shape)}")
+			if n_cache > 0:
+				k_norms = self.cache_keys.detach().norm(dim=-1)
+				print(f"    └─ Key norms     : min={k_norms.min():.6f}, max={k_norms.max():.6f}, mean={k_norms.mean():.6f}")
+			else:
+				print("    └─ WARNING: Cache is EMPTY after filtering!")
 
-		# cast the output back to the input dtype
-		output = output.to(x.dtype)
-		
-		if return_similarity:
-			return output, similarity
+	def compute_clip_logits(self, image_features: torch.Tensor, temperature: float = 0.07) -> torch.Tensor:
+		"""Zero-shot CLIP logits (f_norm @ W_c.T) / temperature in FP32."""
+		with torch.amp.autocast(device_type=image_features.device.type, enabled=False):
+			f_norm = torch.nn.functional.normalize(image_features.float(), p=2, dim=-1)
+			w_c = self.text_features.to(device=f_norm.device, dtype=torch.float32)
+			return (f_norm @ w_c.T) / float(temperature)
 
-		return output
-	
+	def compute_cache_logits(
+		self,
+		image_features: torch.Tensor,
+		beta: Optional[float] = None,
+	) -> torch.Tensor:
+		"""
+		Cache logits exp(-beta * (1 - f_norm @ K_norm.T)) @ L_val in FP32.
+		Row-normalizing cache_keys ensures affinity ∈ [-1, 1] and kernel ∈ (0, 1] (no exp overflow).
+		"""
+		with torch.amp.autocast(device_type=image_features.device.type, enabled=False):
+			f_norm = torch.nn.functional.normalize(image_features.float(), p=2, dim=-1)
+			if self.cache_keys.shape[0] == 0:
+				num_classes = self.text_features.shape[0]
+				return torch.zeros(f_norm.shape[0], num_classes, device=f_norm.device, dtype=torch.float32)
+			k_norm = torch.nn.functional.normalize(self.cache_keys.float(), p=2, dim=-1)
+			affinity = (f_norm @ k_norm.T).clamp(min=-1.0, max=1.0)
+			beta_val = float(beta) if beta is not None else self.beta.float().clamp(min=1e-4)
+			kernel = torch.exp(-beta_val * (1.0 - affinity))
+			return kernel @ self.cache_values.to(device=f_norm.device, dtype=torch.float32)
+
+	def forward(
+		self,
+		image_features: torch.Tensor,
+		temperature: float = 0.07,
+		alpha: Optional[float] = None,
+		beta: Optional[float] = None,
+		return_components: bool = False,
+	) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+		"""
+		Forward pass computing exact Tip-Adapter(-F) class logits [B, C] in FP32:
+			tip_logits = clip_logits + alpha * cache_logits
+		"""
+		with torch.amp.autocast(device_type=image_features.device.type, enabled=False):
+			clip_logits = self.compute_clip_logits(image_features, temperature=temperature)
+			if self.cache_keys.shape[0] == 0:
+				if return_components:
+					return clip_logits, clip_logits, torch.zeros_like(clip_logits)
+				return clip_logits
+			cache_logits = self.compute_cache_logits(image_features, beta=beta)
+			alpha_val = float(alpha) if alpha is not None else self.alpha.float().clamp(min=0.0)
+			tip_logits = clip_logits + alpha_val * cache_logits
+			if return_components:
+				return tip_logits, clip_logits, cache_logits
+			return tip_logits
+
 	def get_memory_footprint(self) -> dict:
-		cache_memory_mb = 0.0
-		if self.cache_keys.numel() > 0:
-			cache_memory_mb += (self.cache_keys.numel() * 4) / (1024 ** 2)
-		if self.cache_values.numel() > 0:
-			cache_memory_mb += (self.cache_values.numel() * 4) / (1024 ** 2)
-		
-		param_memory_mb = (self.beta.numel() + self.alpha.numel()) * 4 / (1024 ** 2)
-		
+		keys_mb = (self.cache_keys.numel() * 4) / (1024 ** 2) if self.cache_keys.numel() > 0 else 0.0
+		vals_mb = (self.cache_values.numel() * 4) / (1024 ** 2) if self.cache_values.numel() > 0 else 0.0
+		text_mb = (self.text_features.numel() * 4) / (1024 ** 2) if self.text_features.numel() > 0 else 0.0
+		param_mb = (self.beta.numel() + self.alpha.numel()) * 4 / (1024 ** 2)
+		cache_memory_mb = keys_mb + vals_mb
+
 		return {
+			'cache_keys_params': int(self.cache_keys.numel()),
+			'trainable_params': int(self.cache_keys.numel()) if self.trainable_keys else 0,
 			'cache_memory_mb': cache_memory_mb,
-			'param_memory_mb': param_memory_mb,
-			'total_memory_mb': cache_memory_mb + param_memory_mb,
-			'cache_size': self.cache_keys.shape[0],
+			'text_memory_mb': text_mb,
+			'param_memory_mb': param_mb,
+			'total_memory_mb': cache_memory_mb + text_mb + param_mb,
+			'cache_size': int(self.cache_keys.shape[0]),
+			'num_classes': int(self.text_features.shape[0]),
 		}
 
-class TipAdapterFLinear(torch.nn.Module):
-		"""
-		Tip-Adapter-F: Fine-tuned version of Tip-Adapter
-		
-		CORRECTIONS:
-		1. Added L2 normalization after linear projection (CRITICAL)
-		2. Proper integration of learnable projection + cache adaptation
-		3. Residual connection from projected features
-		
-		Architecture:
-				x → Linear(trainable) → Normalize → Cache Adaptation → Output
-		
-		Args:
-				in_features: Input dimension (visual feature dimension)
-				out_features: Output dimension (text embedding dimension)
-				device: Device to place parameters
-				initial_beta: Initial temperature parameter
-				initial_alpha: Initial scaling for retrieved features
-				verbose: Enable debug prints
-		"""
-		
-		def __init__(
-				self,
-				in_features: int,
-				out_features: int,
-				device: Union[str, torch.device],
-				initial_beta: float = 1.0,
-				initial_alpha: float = 1.0,
-				verbose: bool = True,
-		):
-				super(TipAdapterFLinear, self).__init__()
-				self.in_features = in_features
-				self.out_features = out_features
-				self.device = device
-				self.verbose = verbose
-				
-				if self.verbose:
-						print(f"\n[{self.__class__.__name__}] Initializing")
-						print(f"    ├─ Dimensions: {in_features} -> {out_features}")
-						print(f"    ├─ Initial β: {initial_beta}")
-						print(f"    └─ Initial α: {initial_alpha}")
-				
-				# Trainable linear projection
-				self.linear = torch.nn.Linear(in_features, out_features, bias=True).to(device)
-				
-				# Cache buffers
-				self.register_buffer('cache_keys', torch.empty(0, out_features, device=device))
-				self.register_buffer('cache_values', torch.empty(0, out_features, device=device))
-				
-				# Scaling parameters (trainable)
-				self.beta = torch.nn.Parameter(torch.tensor(initial_beta, device=device))
-				self.alpha = torch.nn.Parameter(torch.tensor(initial_alpha, device=device))
+	def __repr__(self) -> str:
+		return (
+			f"\n{self.__class__.__name__}\n"
+			f"  ├─ cache_keys: {tuple(self.cache_keys.shape)} (trainable={self.trainable_keys})\n"
+			f"  ├─ cache_values: {tuple(self.cache_values.shape)}\n"
+			f"  ├─ text_features: {tuple(self.text_features.shape)}\n"
+			f"  └─ alpha={self.alpha.item():.4f}, beta={self.beta.item():.4f}\n"
+		)
 
-		def set_cache(
-			self, 
-			support_features: torch.Tensor, 
-			support_labels: torch.Tensor,
-			text_features: torch.Tensor
-		):
-			assert support_features.shape[1] == self.out_features
-			assert text_features.shape[1] == self.out_features
-			
-			# Guard 1: missing support image (zero-padded feature vector)
-			feat_valid = support_features.norm(dim=-1) > 1e-6
 
-			# Guard 2: support image with no active labels (zero label vector)
-			label_valid = support_labels.float().sum(dim=-1) > 0  # multi-label case
+class TipAdapterFLinear(TipAdapterLinear):
+	"""
+	Tip-Adapter-F: Fine-Tuned Tip-Adapter (Zhang et al., ECCV 2022, Sec. 3.2 & Eq. 6).
 
-			valid_mask = feat_valid & label_valid   # [num_classes]
+	Identical to TipAdapterLinear except the cache keys K ∈ R^{M × D} are unfrozen and
+	fine-tuned via gradient descent (initialized to the frozen CLIP visual features of
+	the support set), while the entire CLIP visual encoder, text encoder, and cache values
+	L_val remain completely frozen.
+	"""
 
-			# FIX: Filter out invalid samples entirely instead of zeroing them
-			support_features = support_features[valid_mask]
-			support_labels = support_labels[valid_mask]
+	def __init__(
+		self,
+		cache_features_dim: int,
+		device: Union[str, torch.device],
+		initial_beta: float = 5.5,
+		initial_alpha: float = 1.0,
+		verbose: bool = True,
+	):
+		super(TipAdapterFLinear, self).__init__(
+			cache_features_dim=cache_features_dim,
+			device=device,
+			initial_beta=initial_beta,
+			initial_alpha=initial_alpha,
+			trainable_keys=True,
+			verbose=verbose,
+		)
 
-			# Normalize support features (keys)
-			cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
-
-			# # handle missing classes / zero-padded features by zeroing out the vectors:
-			# cache_keys[~valid_mask] = 0.0 # [x BUG x]
-
-			# Handle single-label or multi-label
-			if support_labels.dim() == 1:
-				# Single-label: direct indexing
-				cache_values = text_features[support_labels]
-			else:
-				# Multi-label: weighted average of text embeddings
-				label_weights = support_labels.float()
-				cache_values = label_weights @ text_features  # [N, out_features]
-				
-				# Normalize by number of active labels
-				class_counts = label_weights.sum(dim=-1, keepdim=True).clamp(min=1.0)
-				cache_values = cache_values / class_counts
-			
-			# Normalize cache values
-			cache_values = torch.nn.functional.normalize(cache_values, p=2, dim=-1)
-
-			# # Zero out value entries for missing classes too
-			# cache_values[~valid_mask] = 0.0 # [x BUG x]
-			
-			self.cache_keys = cache_keys.to(self.device)
-			self.cache_values = cache_values.to(self.device)
-
-			if self.verbose:
-				n_total = valid_mask.shape[0]
-				n_valid = int(valid_mask.sum().item())
-				n_cache = self.cache_keys.shape[0]  # == n_valid after filtering
-
-				print(f"\n[{self.__class__.__name__}] Cache set: {n_cache} support samples (filtered from {n_total})")
-				print(f"    ├─ Keys: {self.cache_keys.shape}")
-				print(f"    ├─ Values: {self.cache_values.shape}")
-				print(f"    ├─ Valid entries (feat): {int(feat_valid.sum().item())} / {n_total}")
-				print(f"    ├─ Valid entries (label): {int(label_valid.sum().item())} / {n_total}")
-				print(f"    └─ Valid entries (both): {n_valid} / {n_total}")
-
-				if n_cache > 0:
-					# After filtering, ALL cache entries are valid -> no masking needed
-					keys_norms = self.cache_keys.norm(dim=-1)
-					vals_norms = self.cache_values.norm(dim=-1)
-					keys_normalized = torch.allclose(keys_norms, torch.ones_like(keys_norms), atol=1e-5)
-					vals_normalized = torch.allclose(vals_norms, torch.ones_like(vals_norms), atol=1e-5)
-					print(f"    ├─ Keys norms   — min: {keys_norms.min():.6f} max: {keys_norms.max():.6f} mean: {keys_norms.mean():.6f}")
-					print(f"    ├─ Values norms — min: {vals_norms.min():.6f} max: {vals_norms.max():.6f} mean: {vals_norms.mean():.6f}")
-					print(f"    ├─ Keys normalized: {keys_normalized}")
-					print(f"    └─ Values normalized: {vals_normalized}")
-				else:
-					print("    └─ WARNING: Cache is EMPTY after filtering!")
-
-		def forward(self, x: torch.Tensor) -> torch.Tensor:
-			"""
-			Forward pass: Linear projection + normalization + cache adaptation
-			"""
-			# Project to embedding space
-			projected = self.linear(x)  # [batch, out_features]
-			
-			if self.cache_keys.shape[0] == 0:
-				# return projected features
-				return projected
-			
-			# CRITICAL: Normalize projected features
-			projected_norm = torch.nn.functional.normalize(projected, p=2, dim=-1)
-			
-			# Compute similarity with cache
-			similarity = projected_norm @ self.cache_keys.T  # [batch, N_support]
-			weights = torch.nn.functional.softmax(self.beta * similarity, dim=-1)
-			
-			# Retrieve cached text features
-			retrieved = weights @ self.cache_values  # [batch, out_features]
-			
-			# Combine (note: using projected, not projected_norm, to maintain scale)
-			output = projected + self.alpha * retrieved
-
-			# cast the output back to the input dtype
-			output = output.to(x.dtype)
-			
-			return output
-		
-		def get_memory_footprint(self) -> dict:
-				linear_params = self.in_features * self.out_features + self.out_features
-				linear_memory_mb = (linear_params * 4) / (1024 ** 2)
-				
-				cache_memory_mb = 0.0
-				if self.cache_keys.numel() > 0:
-						cache_memory_mb += (self.cache_keys.numel() * 4) / (1024 ** 2)
-				if self.cache_values.numel() > 0:
-						cache_memory_mb += (self.cache_values.numel() * 4) / (1024 ** 2)
-				
-				param_memory_mb = (self.beta.numel() + self.alpha.numel()) * 4 / (1024 ** 2)
-				
-				return {
-						'linear_params': linear_params,
-						'linear_memory_mb': linear_memory_mb,
-						'cache_memory_mb': cache_memory_mb,
-						'param_memory_mb': param_memory_mb,
-						'total_memory_mb': linear_memory_mb + cache_memory_mb + param_memory_mb,
-						'cache_size': self.cache_keys.shape[0],
-				}
 
 class CLIPAdapterBottleneck(torch.nn.Module):
 	"""
-	Bottleneck adapter for CLIP-Adapter.
-	
-	CORRECTIONS:
-	1. Added learnable residual scaling factor (ratio)
-	2. Proper initialization
-	3. Option for LayerNorm in bottleneck
-	
+	Bottleneck feature adapter for CLIP-Adapter (Gao et al., IJCV 2023, Eq. 2, 4, 5).
+
 	Architecture:
-			h' = h + ratio * up(activation(down(h)))
-	
-	Args:
-			in_features: Input/output dimension
-			bottleneck_dim: Hidden dimension
-			device: Device for parameters
-			activation: Activation function ('relu' or 'gelu')
-			residual_ratio: Initial scaling for residual connection (paper uses 0.2)
-			trainable_ratio: Whether residual_ratio is trainable
-			use_layer_norm: Add LayerNorm in bottleneck
-			verbose: Debug prints
+		A(x) = W_2(act(W_1(x)))
+		x*   = (1 - ratio) * x + ratio * A(x)
+
+	Notes:
+		- Matches Gao et al. (IJCV 2023) convex residual blending with default fixed ratio = 0.2.
+		- up_proj is zero-initialized so at step 0, x* = (1 - ratio) * x, which after L2
+		  normalization equals exact zero-shot CLIP (0-perturbation start).
+		- If trainable_ratio=True, ratio is parameterized via sigmoid(logit) ∈ (0, 1) so it
+		  remains strictly bounded.
 	"""
-	
+
 	def __init__(
 		self,
 		in_features: int,
@@ -1293,85 +1201,98 @@ class CLIPAdapterBottleneck(torch.nn.Module):
 		device: Union[str, torch.device],
 		activation: str = "relu",
 		residual_ratio: float = 0.2,
-		trainable_ratio: bool = True,
+		trainable_ratio: bool = False,
 		use_layer_norm: bool = False,
 		verbose: bool = True,
 	):
 		super(CLIPAdapterBottleneck, self).__init__()
+		if not (0.0 < residual_ratio < 1.0):
+			raise ValueError(f"residual_ratio must be in (0, 1), got {residual_ratio}")
+
 		self.in_features = in_features
 		self.bottleneck_dim = bottleneck_dim
-		self.device = device
+		self.device = torch.device(device)
+		self.trainable_ratio = trainable_ratio
 		self.verbose = verbose
-		
-		if self.verbose:
-			print(f"\n{self.__class__.__name__}")
-			print(f"    ├─ in_features: {in_features}")
-			print(f"    ├─ bottleneck_dim: {bottleneck_dim}")
-			print(f"    ├─ Architecture: in_features: {in_features} -> bottleneck_dim: {bottleneck_dim} -> in_features: {in_features}")
-			print(f"    ├─ Activation: {activation}")
-			print(f"    ├─ Residual ratio: {residual_ratio} (trainable: {trainable_ratio})")
-			print(f"    ├─ LayerNorm: {use_layer_norm}")
-			print(f"    └─ Residual ratio: {residual_ratio} (trainable: {trainable_ratio})")
-		
+
 		# Down projection
-		self.down_proj = torch.nn.Linear(in_features, bottleneck_dim, bias=False).to(device)
-		
+		self.down_proj = torch.nn.Linear(in_features, bottleneck_dim, bias=False).to(self.device)
+
 		# Optional LayerNorm
 		self.use_layer_norm = use_layer_norm
 		if use_layer_norm:
-			self.layer_norm = nn.LayerNorm(bottleneck_dim).to(device)
-		
+			self.layer_norm = torch.nn.LayerNorm(bottleneck_dim).to(self.device)
+
 		# Activation
-		if activation.lower() == "relu":
+		act_lower = activation.lower()
+		if act_lower == "relu":
 			self.activation = torch.nn.ReLU()
-		elif activation.lower() == "gelu":
-			self.activation = nn.GELU()
+		elif act_lower == "gelu":
+			self.activation = torch.nn.GELU()
 		else:
 			raise ValueError(f"Unsupported activation: {activation}")
-		
+
 		# Up projection
-		self.up_proj = torch.nn.Linear(bottleneck_dim, in_features, bias=False).to(device)
-		
-		# Residual scaling (CRITICAL FIX)
-		self.ratio = torch.nn.Parameter(torch.tensor(residual_ratio, device=device))
-		self.ratio.requires_grad = trainable_ratio
-		
-		# Initialize weights
-		torch.nn.init.kaiming_uniform_(self.down_proj.weight, a=0, mode='fan_in', nonlinearity='relu')
-		torch.nn.init.zeros_(self.up_proj.weight)  # Start with near-identity
-		
+		self.up_proj = torch.nn.Linear(bottleneck_dim, in_features, bias=False).to(self.device)
+
+		# Convex residual ratio alpha ∈ (0, 1)
+		if self.trainable_ratio:
+			init_logit = math.log(residual_ratio / (1.0 - residual_ratio))
+			self._ratio_logit = torch.nn.Parameter(
+				torch.tensor(init_logit, device=self.device, dtype=torch.float32)
+			)
+		else:
+			self.register_buffer(
+				'ratio',
+				torch.tensor(float(residual_ratio), device=self.device, dtype=torch.float32),
+			)
+
+		# Initialize weights: Kaiming for down_proj, zero for up_proj (exact zero-shot at step 0)
+		torch.nn.init.kaiming_uniform_(
+			self.down_proj.weight,
+			a=0 if act_lower == "relu" else math.sqrt(5),
+			mode='fan_in',
+			nonlinearity='relu' if act_lower == "relu" else 'leaky_relu',
+		)
+		torch.nn.init.zeros_(self.up_proj.weight)
+
 		if self.verbose:
-			print(f"    ├─ Down proj init: Kaiming uniform")
-			print(f"    └─ Up proj init: Zeros (near identity)")
-	
+			print(f"\n{self.__class__.__name__}")
+			print(f"    ├─ Architecture   : {in_features} -> {bottleneck_dim} -> {in_features}")
+			print(f"    ├─ Activation     : {activation}")
+			print(f"    ├─ Residual ratio : {residual_ratio} (convex (1-α)x + αA(x), trainable={trainable_ratio})")
+			print(f"    ├─ LayerNorm      : {use_layer_norm}")
+			print(f"    ├─ Down proj init : Kaiming uniform")
+			print(f"    └─ Up proj init   : Zeros (exact zero-shot CLIP after L2-norm at step 0)")
+
+	def get_ratio(self) -> torch.Tensor:
+		if self.trainable_ratio:
+			return torch.sigmoid(self._ratio_logit)
+		return self.ratio
+
 	def forward(self, x: torch.Tensor) -> torch.Tensor:
 		"""
-		Forward: h' = h + ratio * adapter(h)
+		Forward: x* = (1 - ratio) * x + ratio * up_proj(act(down_proj(x)))
 		"""
-		residual = x
-		
-		# Adapter path
 		h = self.down_proj(x)
 		if self.use_layer_norm:
-				h = self.layer_norm(h)
+			h = self.layer_norm(h)
 		h = self.activation(h)
 		h = self.up_proj(h)
-		
-		# Scaled residual connection (CRITICAL)
-		output = residual + self.ratio * h
-		
-		return output
-	
+
+		ratio = self.get_ratio().to(dtype=x.dtype, device=x.device)
+		return (1.0 - ratio) * x + ratio * h
+
 	def get_memory_footprint(self) -> dict:
 		down_params = self.in_features * self.bottleneck_dim
 		up_params = self.bottleneck_dim * self.in_features
-		total_params = down_params + up_params + 1  # +1 for ratio
-		
+		total_params = down_params + up_params + (1 if self.trainable_ratio else 0)
+
 		if self.use_layer_norm:
-			total_params += 2 * self.bottleneck_dim  # weight + bias
-		
+			total_params += 2 * self.bottleneck_dim
+
 		memory_mb = (total_params * 4) / (1024 ** 2)
-		
+
 		return {
 			'params': total_params,
 			'memory_mb': memory_mb,
@@ -1383,146 +1304,68 @@ class CLIPAdapterBottleneck(torch.nn.Module):
 			f"  ├─ in_features: {self.in_features}\n"
 			f"  ├─ bottleneck_dim: {self.bottleneck_dim}\n"
 			f"  ├─ Activation: {self.activation.__class__.__name__}\n"
-			f"  ├─ Residual ratio: {self.ratio.item()} (trainable: {self.ratio.requires_grad})\n"
+			f"  ├─ Residual ratio: {self.get_ratio().item():.4f} (trainable: {self.trainable_ratio})\n"
 			f"  ├─ LayerNorm: {self.use_layer_norm}\n"
 			f"  └─ Memory footprint: {self.get_memory_footprint()['memory_mb']:.4f} MB\n"
-		)	
+		)
+
 
 class CLIPAdapterText(torch.nn.Module):
 	"""
-	CLIP-Adapter for text encoder.
-	
-	FIXES:
-	1. Stores only necessary components (not the whole model) to avoid circular references
-	2. Implements forward() method instead of monkey-patching encode_text
-	3. Proper dtype inference from model parameters
-	4. Proper integration without recursion issues
-	
-	Args:
-		clip_text_model: CLIP text encoder (full model)
-		bottleneck_dim: Bottleneck dimension
-		device: Device
-		activation: Activation function
-		residual_ratio: Scaling for adapter residual
-		trainable_ratio: Whether ratio is trainable
-		verbose: Debug prints
+	CLIP-Adapter for the text encoder (Gao et al., IJCV 2023, Eq. 5).
+
+	Operates directly on post-projection text embeddings W ∈ R^D (multimodal embed_dim)
+	without storing references to base text encoder submodules (preventing duplicate
+	parameters in state_dict() and stale dtype bugs).
 	"""
-	
+
 	def __init__(
-			self,
-			clip_text_model: torch.nn.Module,
-			bottleneck_dim: int,
-			device: Union[str, torch.device],
-			activation: str = "relu",
-			residual_ratio: float = 0.2,
-			trainable_ratio: bool = True,
-			verbose: bool = True,
+		self,
+		embed_dim: int,
+		bottleneck_dim: int,
+		device: Union[str, torch.device],
+		activation: str = "relu",
+		residual_ratio: float = 0.2,
+		trainable_ratio: bool = False,
+		verbose: bool = True,
 	):
 		super(CLIPAdapterText, self).__init__()
+		self.embed_dim = embed_dim
 		self.bottleneck_dim = bottleneck_dim
-		self.device = device
+		self.device = torch.device(device)
 		self.verbose = verbose
-		
+
 		if self.verbose:
-			print(f"[CLIP-Adapter-Text] Initializing")
-		
-		# Get feature dimension from ln_final
-		if hasattr(clip_text_model, 'ln_final'):
-			in_features = clip_text_model.ln_final.weight.size(0)
-		else:
-			raise ValueError("Text encoder must have 'ln_final' layer")
-		
-		# Create adapter bottleneck
+			print(f"[CLIP-Adapter-Text] Initializing (post-projection embed_dim={embed_dim})")
+
 		self.adapter = CLIPAdapterBottleneck(
-			in_features=in_features,
+			in_features=embed_dim,
 			bottleneck_dim=bottleneck_dim,
-			device=device,
+			device=self.device,
 			activation=activation,
 			residual_ratio=residual_ratio,
 			trainable_ratio=trainable_ratio,
 			verbose=verbose,
 		)
-		
-		# Store ONLY the necessary components (NOT the whole model!)
-		# This prevents circular references during .to(device)
-		self.token_embedding = clip_text_model.token_embedding
-		self.positional_embedding = clip_text_model.positional_embedding
-		self.transformer = clip_text_model.transformer
-		self.ln_final = clip_text_model.ln_final
-		self.text_projection = clip_text_model.text_projection
-		
-		# Infer dtype from model parameters (CLIP model doesn't have .dtype attribute)
-		# Try to get dtype from positional_embedding or ln_final weights
-		if hasattr(clip_text_model.positional_embedding, 'dtype'):
-			self.dtype = clip_text_model.positional_embedding.dtype
-		elif hasattr(clip_text_model.ln_final.weight, 'dtype'):
-			self.dtype = clip_text_model.ln_final.weight.dtype
-		else:
-			# Fallback to float32
-			self.dtype = torch.float32
-		
-		if self.verbose:
-			print(f"[CLIP-Adapter-Text] Components stored (no circular reference)")
-			print(f"[CLIP-Adapter-Text] Adapter input/output dim: {in_features}")
-			print(f"[CLIP-Adapter-Text] Inferred dtype: {self.dtype}")
-	
-	def forward(self, text: torch.Tensor) -> torch.Tensor:
-		"""
-		Forward pass through text encoder with adapter.
-		
-		This replaces the encode_text() method functionality.
-		
-		Args:
-				text: Tokenized text input [batch, context_length]
-		
-		Returns:
-				Text features with adapter applied [batch, embed_dim]
-		"""
-		# Standard CLIP text encoding
-		x = self.token_embedding(text).type(self.dtype)
-		x = x + self.positional_embedding.type(self.dtype)
-		x = x.permute(1, 0, 2)  # NLD -> LND
-		x = self.transformer(x)
-		x = x.permute(1, 0, 2)  # LND -> NLD
-		x = self.ln_final(x).type(self.dtype)
-		
-		# Take features from the eot token (end of text token)
-		# text.argmax(dim=-1) finds the position of the highest token ID (which is the eot token)
-		x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
-		
-		# Apply adapter (CRITICAL: adapter modifies features here)
-		x = self.adapter(x)
-		
-		# Apply text projection
-		if self.text_projection is not None:
-				x = x @ self.text_projection
-		
-		return x
-	
+
+	def forward(self, text_features: torch.Tensor) -> torch.Tensor:
+		"""Apply text adapter to post-projection text features [B, embed_dim]."""
+		return self.adapter(text_features)
+
 	def get_memory_footprint(self) -> dict:
-		"""Return memory usage of the adapter."""
+		"""Return memory usage of the text adapter."""
 		return self.adapter.get_memory_footprint()
+
 
 class CLIPAdapterVisual(torch.nn.Module):
 	"""
-	CLIP-Adapter for visual encoder.
-	
-	CORRECTIONS:
-	1. Uses forward hooks instead of monkey-patching (CRITICAL FIX)
-	2. Proper module registration
-	3. Clean integration without rewriting forward pass
-	4. Preserves access to original encoder attributes (conv1, etc.)
-	
-	Args:
-		clip_visual_model: CLIP visual encoder
-		bottleneck_dim: Bottleneck dimension
-		device: Device
-		activation: Activation function
-		residual_ratio: Scaling for adapter residual
-		trainable_ratio: Whether ratio is trainable
-		verbose: Debug prints
+	CLIP-Adapter for the visual encoder (Gao et al., IJCV 2023, Eq. 4).
+
+	Operates directly on the post-projection visual embedding f = visual_encoder(x) ∈ R^D
+	in the shared multimodal space (no forward hooks, supports both ViT and ModifiedResNet,
+	and fully safe under copy.deepcopy and checkpoint save/load).
 	"""
-	
+
 	def __init__(
 		self,
 		clip_visual_model: torch.nn.Module,
@@ -1530,203 +1373,203 @@ class CLIPAdapterVisual(torch.nn.Module):
 		device: Union[str, torch.device],
 		activation: str = "relu",
 		residual_ratio: float = 0.2,
-		trainable_ratio: bool = True,
+		trainable_ratio: bool = False,
 		verbose: bool = True,
 	):
 		super(CLIPAdapterVisual, self).__init__()
 		self.visual_encoder = clip_visual_model
 		self.bottleneck_dim = bottleneck_dim
-		self.device = device
+		self.device = torch.device(device)
 		self.verbose = verbose
-		
+
 		if self.verbose:
 			print(f"\n[INITIALIZATION] {self.__class__.__name__}")
-		
-		# Get feature dimension from ln_post
-		if hasattr(clip_visual_model, 'ln_post'):
-			in_features = clip_visual_model.ln_post.weight.size(0)
+
+		# Infer post-projection multimodal embedding dimension (works for both ViT and ResNet)
+		if hasattr(clip_visual_model, 'output_dim') and clip_visual_model.output_dim is not None:
+			in_features = int(clip_visual_model.output_dim)
+		elif hasattr(clip_visual_model, 'proj') and clip_visual_model.proj is not None:
+			in_features = int(clip_visual_model.proj.size(1))
 		else:
-			raise ValueError("Visual encoder must have 'ln_post' layer")
-		
-		# Create adapter
+			raise ValueError("Could not infer visual output_dim for CLIPAdapterVisual.")
+
 		self.adapter = CLIPAdapterBottleneck(
 			in_features=in_features,
 			bottleneck_dim=bottleneck_dim,
-			device=device,
+			device=self.device,
 			activation=activation,
 			residual_ratio=residual_ratio,
 			trainable_ratio=trainable_ratio,
 			verbose=verbose,
 		)
-		# Register forward hook
-		self.hook_handle = clip_visual_model.ln_post.register_forward_hook(self._adapter_hook)
-		
+
 		if self.verbose:
-			print(f"{self.__class__.__name__} Hook registered on ln_post")
-			print(f"  ├─ in_features: {in_features}")
-			print(f"  └─ bottleneck_dim: {bottleneck_dim}")
-	
-	def _adapter_hook(self, module, input, output):
-		"""
-		Hook applied after ln_post.
-		Takes the [CLS] token output and applies the adapter.
-		"""
-		return self.adapter(output)
-	
-	def forward(self, x):
-		"""Forward pass through the original visual encoder."""
-		return self.visual_encoder(x)
-	
+			print(f"{self.__class__.__name__} attached post-projection (multimodal space)")
+			print(f"  ├─ in_features (embed_dim): {in_features}")
+			print(f"  └─ bottleneck_dim         : {bottleneck_dim}")
+
+	def forward(self, x: torch.Tensor) -> torch.Tensor:
+		"""Forward pass through frozen visual encoder followed by post-projection CLIP-Adapter."""
+		features = self.visual_encoder(x)
+		return self.adapter(features)
+
 	def __getattr__(self, name):
-		"""
-		Delegate attribute access to the wrapped visual encoder.
-		This allows the CLIP model to access attributes like conv1, transformer, etc.
-		"""
-		# First try to get from self
+		"""Delegate attribute access (conv1, transformer, proj, etc.) to wrapped visual encoder."""
 		try:
 			return super().__getattr__(name)
 		except AttributeError:
-			# If not found, try the wrapped visual encoder
 			if name != 'visual_encoder' and hasattr(self, 'visual_encoder'):
 				return getattr(self.visual_encoder, name)
 			raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-	
+
 	def remove_adapter(self):
-		"""Remove the hook to restore original behavior."""
-		if hasattr(self, 'hook_handle'):
-			self.hook_handle.remove()
-			if self.verbose:
-				print("[CLIP-Adapter-Visual] Adapter hook removed")
-	
+		"""Compatibility no-op (no forward hooks are registered)."""
+		pass
+
 	def get_memory_footprint(self) -> dict:
 		return self.adapter.get_memory_footprint()
+
 
 def get_adapter_peft_clip(
 	clip_model: torch.nn.Module,
 	method: str,
-	initial_beta: Optional[float]=None,    # Tip-Adapter
-	initial_alpha: Optional[float]=None,   # Tip-Adapter
-	bottleneck_dim: Optional[int]=None,  # CLIP-Adapter
-	activation: Optional[str]=None,  # CLIP-Adapter
-	verbose: bool=False,
+	initial_beta: Optional[float] = None,    # Tip-Adapter (default 5.5 per Zhang et al. ECCV 2022)
+	initial_alpha: Optional[float] = None,   # Tip-Adapter (default 1.0 per Zhang et al. ECCV 2022)
+	bottleneck_dim: Optional[int] = None,    # CLIP-Adapter
+	activation: Optional[str] = None,        # CLIP-Adapter
+	residual_ratio: float = 0.2,             # CLIP-Adapter convex residual ratio (paper default 0.2)
+	trainable_ratio: bool = False,           # CLIP-Adapter fixed ratio per Gao et al. IJCV 2023
+	cache_dim: Optional[int] = None,         # Optional explicit cache_dim (backward compat)
+	verbose: bool = False,
 ):
 	"""
-	Apply adapter-based fine-tuning techniques (Tip-Adapter, CLIP-Adapter) to a CLIP model.
-	
+	Apply adapter-based PEFT methods (CLIP-Adapter, Tip-Adapter, Tip-Adapter-F) to a CLIP model.
+
 	Args:
 		clip_model: Pre-trained CLIP model.
-		method: Adaptation method - "tip_adapter", "tip_adapter_f", "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt".
-		cache_dim: Dimension of the cached features (for Tip-Adapter compatibility).
-		bottleneck_dim: Dimension of the CLIP-Adapter bottleneck layer.
-		activation: Activation function for CLIP-Adapter ("relu" or "gelu").
-		verbose: Print detailed information.
-	
+		method: One of "tip_adapter", "tip_adapter_f", "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt".
+		initial_beta: Tip-Adapter affinity sharpness β (default 5.5).
+		initial_alpha: Tip-Adapter residual cache weight α (default 1.0).
+		bottleneck_dim: CLIP-Adapter bottleneck hidden dimension.
+		activation: CLIP-Adapter activation ("relu" or "gelu").
+		residual_ratio: CLIP-Adapter residual blending ratio α in (1-α)f + αA(f) (default 0.2).
+		trainable_ratio: Whether CLIP-Adapter residual_ratio is trainable (default False per paper).
+		cache_dim: Optional override for Tip-Adapter feature dimension.
+		verbose: Print detailed setup diagnostics.
+
 	Returns:
-		Modified CLIP model with the specified adapter applied.
+		Deep-copied CLIP model with the specified adapter attached and base parameters frozen.
 	"""
-	# Validate method
 	valid_methods = ["tip_adapter", "tip_adapter_f", "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"]
 	if method not in valid_methods:
 		raise ValueError(f"method must be one of {valid_methods}, got '{method}'")
-	
-	# --- CLIP-ADAPTER LOGIC ---
+
+	device = next(clip_model.parameters()).device
+
+	# ─────────────────────────────────────────────────────────────────────────
+	# CLIP-ADAPTER (Gao et al., IJCV 2023)
+	# ─────────────────────────────────────────────────────────────────────────
 	if method.startswith("clip_adapter"):
 		if bottleneck_dim is None:
 			raise ValueError("bottleneck_dim must be specified for CLIP-Adapter methods.")
 		if activation not in ["relu", "gelu"]:
 			raise ValueError("activation for CLIP-Adapter must be 'relu' or 'gelu'.")
-		
-		device = next(clip_model.parameters()).device
+
 		model = copy.deepcopy(clip_model)
-		
+
 		if verbose:
 			print(f"\n[CLIP-ADAPTER CONFIGURATION]")
 			print(f"{'='*100}")
 			print(f"[1] METHOD SELECTION")
-			print(f"    ├─ Selected Method: {method}")
-			print(f"    ├─ Bottleneck Dimension: {bottleneck_dim}")
-			print(f"    └─ Activation Function: {activation}")
+			print(f"    ├─ Selected Method     : {method}")
+			print(f"    ├─ Bottleneck Dim      : {bottleneck_dim}")
+			print(f"    ├─ Activation Function : {activation}")
+			print(f"    └─ Residual Ratio      : {residual_ratio} (trainable={trainable_ratio})")
 			total_params = sum(p.numel() for p in model.parameters())
 			total_trainable_before = sum(p.numel() for p in model.parameters() if p.requires_grad)
 			print(f"\n[2] MODEL ANALYSIS")
-			print(f"    ├─ Total Parameters: {total_params:,}")
-			print(f"    └─ Trainable Parameters (before): {total_trainable_before:,}")
-		
-		# --- Apply CLIP-Adapter ---
+			print(f"    ├─ Total Parameters              : {total_params:,}")
+			print(f"    └─ Trainable Parameters (before) : {total_trainable_before:,}")
+
 		adapter_memory_info = {}
-		
-		# Visual Adapter
+
+		# Visual Adapter (post-projection multimodal embedding space)
 		if method in ["clip_adapter_v", "clip_adapter_vt"]:
 			if verbose:
-				print(f"\n[3] APPLYING CLIP-ADAPTER (VISUAL)")
-			
+				print(f"\n[3] APPLYING CLIP-ADAPTER (VISUAL — post-projection)")
+
 			visual_adapter = CLIPAdapterVisual(
 				clip_visual_model=model.visual,
 				bottleneck_dim=bottleneck_dim,
 				device=device,
 				activation=activation,
-				verbose=verbose
+				residual_ratio=residual_ratio,
+				trainable_ratio=trainable_ratio,
+				verbose=verbose,
 			)
-			
-			# Replace visual encoder with wrapper
 			model.visual = visual_adapter
 			adapter_memory_info['visual'] = visual_adapter.get_memory_footprint()
-			
+
 			if verbose:
 				print(f"Visual Adapter Memory: {adapter_memory_info['visual']['memory_mb']:.4f} MB")
-		
-		# Text Adapter
+
+		# Text Adapter (post-text_projection multimodal embedding space — NO duplicate base weights)
 		if method in ["clip_adapter_t", "clip_adapter_vt"]:
 			if verbose:
-					print(f"\n[4] APPLYING CLIP-ADAPTER (TEXT)")
-			
-			# Create text adapter (stores components, not whole model)
+				print(f"\n[4] APPLYING CLIP-ADAPTER (TEXT — post-projection)")
+
+			if hasattr(model, 'embed_dim') and model.embed_dim is not None:
+				text_embed_dim = int(model.embed_dim)
+			elif hasattr(model, 'text_projection') and model.text_projection is not None:
+				text_embed_dim = int(model.text_projection.size(1))
+			else:
+				raise ValueError("Could not infer text embed_dim for CLIPAdapterText.")
+
 			text_adapter = CLIPAdapterText(
-				clip_text_model=model,
+				embed_dim=text_embed_dim,
 				bottleneck_dim=bottleneck_dim,
 				device=device,
 				activation=activation,
-				verbose=verbose
+				residual_ratio=residual_ratio,
+				trainable_ratio=trainable_ratio,
+				verbose=verbose,
 			)
-			
-			# Register the adapter as a submodule for parameter tracking
-			# Use add_module to properly register it in the module hierarchy
-			model.add_module('_text_adapter', text_adapter)
-			
-			# Replace encode_text method to use the adapter
-			def encode_text_with_adapter(text):
-				"""Wrapper that calls the text adapter's forward method."""
-				return model._text_adapter(text)
-			
-			# Monkey-patch the encode_text method
-			model.encode_text = encode_text_with_adapter
-			
+			model.add_module('text_adapter', text_adapter)
+
+			# Expose base (frozen) text encoder cleanly so trainer can cache base text embeddings
+			def _encode_base_text(self, text: torch.Tensor) -> torch.Tensor:
+				return type(self).encode_text(self, text)
+
+			def _encode_text_with_adapter(self, text: torch.Tensor) -> torch.Tensor:
+				base_features = type(self).encode_text(self, text)
+				return self.text_adapter(base_features)
+
+			model.encode_base_text = types.MethodType(_encode_base_text, model)
+			model.encode_text = types.MethodType(_encode_text_with_adapter, model)
+
 			adapter_memory_info['text'] = text_adapter.get_memory_footprint()
-			
+
 			if verbose:
 				print(f"    └─ Text Adapter Memory: {adapter_memory_info['text']['memory_mb']:.4f} MB")
-		
-		# --- FREEZE BASE MODEL PARAMETERS ---
+
+		# Freeze all base CLIP parameters; unfreeze only adapter module parameters
 		if verbose:
 			print(f"\n[5] FREEZING BASE MODEL PARAMETERS")
-		
-		for name, param in model.named_parameters():
-			# Only adapter parameters should be trainable
-			is_adapter_param = any([
-				'adapter.down_proj' in name,
-				'adapter.up_proj' in name,
-				'adapter.ratio' in name,
-				'_text_adapter.adapter' in name,
-				'visual.adapter' in name,  # For visual adapter in CLIPAdapterVisual
-			])
-			param.requires_grad = is_adapter_param
-		
+
+		for param in model.parameters():
+			param.requires_grad = False
+
+		if method in ["clip_adapter_v", "clip_adapter_vt"]:
+			for param in model.visual.adapter.parameters():
+				param.requires_grad = True
+		if method in ["clip_adapter_t", "clip_adapter_vt"]:
+			for param in model.text_adapter.adapter.parameters():
+				param.requires_grad = True
+
 		total_trainable_after = sum(p.numel() for p in model.parameters() if p.requires_grad)
-		
+
 		if verbose:
 			print(f"    └─ Trainable Parameters (after): {total_trainable_after:,}")
-			
-			# Debug: Print trainable parameters
 			if total_trainable_after > 0:
 				print("\n    Trainable parameters:")
 				for name, param in model.named_parameters():
@@ -1734,228 +1577,79 @@ def get_adapter_peft_clip(
 						print(f"      - {name}: {param.numel():,} parameters")
 			else:
 				print("\n    WARNING: No trainable parameters found!")
-		
-		if verbose:
+
 			print(f"\n[6] MEMORY FOOTPRINT SUMMARY - CLIP-ADAPTER")
 			total_adapter_memory = 0.0
 			for enc_type, mem_info in adapter_memory_info.items():
 				print(f"    ├─ {enc_type.upper()} Adapter: {mem_info['params']:,} params, {mem_info['memory_mb']:.4f} MB")
 				total_adapter_memory += mem_info['memory_mb']
 			print(f"    └─ Total Adapter Memory: {total_adapter_memory:.4f} MB")
-		
+
 		return model
-	
-	# --- TIP-ADAPTER LOGIC ---
-	# Validate method for Tip-Adapter
-	if method not in ["tip_adapter", "tip_adapter_f"]:
-		raise ValueError(f"method must be 'tip_adapter' or 'tip_adapter_f', got '{method}'")
-	
-	if method in ["tip_adapter", "tip_adapter_f"]:
-		# Infer cache_dim from visual projection (already accessed below anyway)
-		if hasattr(clip_model.visual, "proj"):
-			cache_dim = clip_model.visual.proj.size(1)
-		elif hasattr(clip_model, "text_projection"):
-			cache_dim = clip_model.text_projection.size(1)
+
+	# ─────────────────────────────────────────────────────────────────────────
+	# TIP-ADAPTER & TIP-ADAPTER-F (Zhang et al., ECCV 2022)
+	# ─────────────────────────────────────────────────────────────────────────
+	if initial_beta is None:
+		initial_beta = 5.5
+	if initial_alpha is None:
+		initial_alpha = 1.0
+
+	if cache_dim is None:
+		if hasattr(clip_model, "embed_dim") and clip_model.embed_dim is not None:
+			cache_dim = int(clip_model.embed_dim)
+		elif hasattr(clip_model.visual, "output_dim") and clip_model.visual.output_dim is not None:
+			cache_dim = int(clip_model.visual.output_dim)
+		elif hasattr(clip_model.visual, "proj") and clip_model.visual.proj is not None:
+			cache_dim = int(clip_model.visual.proj.size(1))
+		elif hasattr(clip_model, "text_projection") and clip_model.text_projection is not None:
+			cache_dim = int(clip_model.text_projection.size(1))
 		else:
 			raise ValueError("Could not infer cache_dim. Please specify explicitly.")
 
-		if verbose:
-			print(f"[{method}] Inferred cache_dim: {cache_dim}")
-
-	# Select adapter class based on method
 	if method == "tip_adapter":
 		AdapterClass = TipAdapterLinear
-		method_name = "Tip-Adapter"
+		method_name = "Tip-Adapter (Training-Free)"
 	elif method == "tip_adapter_f":
 		AdapterClass = TipAdapterFLinear
-		method_name = "Tip-Adapter-F"
+		method_name = "Tip-Adapter-F (Fine-Tuned Cache Keys)"
 	else:
 		raise ValueError(f"Unsupported adapter method: {method}")
-	
+
 	if verbose:
 		print(f"\n[TIP-ADAPTER CONFIGURATION]")
 		print(f"{'='*100}")
 		print(f"[1] METHOD SELECTION")
-		print(f"    ├─ Selected Method: {method_name}")
-		print(f"    ├─ Adapter Class: {AdapterClass.__name__}")
-		print(f"    └─ Cache Features Dimension: {cache_dim}")
-	
-	device = next(clip_model.parameters()).device
-	
-	# Analyze model architecture (relevant for Tip-Adapter-F)
-	if verbose:
-		print(f"\n[2] MODEL ARCHITECTURE ANALYSIS")
-		total_params = sum(p.numel() for p in clip_model.parameters())
-		total_trainable = sum(p.numel() for p in clip_model.parameters() if p.requires_grad)
-		print(f"    ├─ Total Parameters: {total_params:,}")
-		print(f"    ├─ Currently Trainable: {total_trainable:,}")
-		print(f"    ├─ Device: {device}")
-		print(f"    └─ Model Type: {type(clip_model).__name__}")
-	
-	# --- MAIN LOGIC: Modify Visual Encoder ---
-	if verbose:
-		print(f"\n[3] VISUAL ENCODER MODIFICATION")
-	
-	# Deep copy model to avoid modifying the original
-	model = copy.deepcopy(clip_model)
-	
-	# Check for the final projection layer
-	if not hasattr(model.visual, "proj") or not isinstance(model.visual.proj, torch.nn.Parameter):
-		raise ValueError(f"CLIP model's visual encoder must have a final projection parameter named 'proj'.")
-	
-	# Get dimensions from the original projection
-	original_proj_in_dim = model.visual.proj.size(0)  # e.g., 768 (ViT output)
-	original_proj_out_dim = model.visual.proj.size(1)  # e.g., 512 (text embedding dim)
-	
-	if verbose:
-		print(f"    ├─ Found original visual projection: {original_proj_in_dim} -> {original_proj_out_dim}")
-		print(f"    ├─ Expected cache_dim ({cache_dim}) should match text embedding dim ({original_proj_out_dim}).")
-	
-	# --- Apply the specific adapter ---
-	if method == "tip_adapter":
-		# Tip-Adapter assumes the input to the adapter is the output of the original projection.
-		if original_proj_out_dim != cache_dim:
-			raise ValueError(f"For {method_name}, the original projection output dim ({original_proj_out_dim}) must match the cache_dim ({cache_dim}).")
-		
-		# Create the Tip-Adapter module
-		adapter_visual_proj = AdapterClass(
-			cache_features_dim=original_proj_out_dim,
-			device=device,
-			initial_beta=initial_beta,
-			initial_alpha=initial_alpha,
-			verbose=verbose
-		)
-		
-		# Store the adapter module as an attribute of the visual encoder
-		setattr(model.visual, f"{method.replace('-', '_')}_proj", adapter_visual_proj)
-		
-		# --- Monkey-patch the visual encoder's forward pass ---
-		original_proj_weight = model.visual.proj.clone().detach()
-		def vit_forward_with_adapter(self, x: torch.Tensor):
-			# Standard ViT forward until the final projection
-			x = self.conv1(x)
-			x = x.reshape(x.shape[0], x.shape[1], -1)
-			x = x.permute(0, 2, 1)
-			cls = self.class_embedding.to(x.dtype) + torch.zeros(
-				x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
-			)
-			x = torch.cat([cls, x], dim=1)
-			x = x + self.positional_embedding.to(x.dtype)
-			x = self.dropout(x)
-			x = self.ln_pre(x)
-			x = x.permute(1, 0, 2)
-			x = self.transformer(x)
-			x = x.permute(1, 0, 2)
-			x = self.ln_post(x[:, 0, :])  # x is now [batch, original_proj_in_dim]
-			
-			# Apply the original projection to get into the cache space
-			x = x @ original_proj_weight  # x is now [batch, original_proj_out_dim]
-			# Apply the Tip-Adapter
-			x = getattr(self, f"{method.replace('-', '_')}_proj")(x)
-			return x
-		
-		model.visual.forward = vit_forward_with_adapter.__get__(model.visual, type(model.visual))
-		
-		if verbose:
-			print(f"    ├─ Replaced final projection logic with {AdapterClass.__name__}")
-			print(f"    ├─ Input to adapter: {original_proj_out_dim}, Output from adapter: {original_proj_out_dim}")
-			print(f"    └─ Model's visual.forward has been updated.")
-	elif method == "tip_adapter_f":
-		# Tip-Adapter-F replaces the original projection entirely
-		if original_proj_out_dim != cache_dim:
-			raise ValueError(f"For {method_name}, the original projection output dim ({original_proj_out_dim}) must match the cache_dim ({cache_dim}).")
-		
-		# Create the Tip-Adapter-F module
-		adapter_visual_proj = AdapterClass(
-			in_features=original_proj_in_dim,
-			out_features=original_proj_out_dim,
-			device=device,
-			initial_beta=initial_beta,
-			initial_alpha=initial_alpha,
-			verbose=verbose
-		)
-		# Copy the original projection weight for initialization
-		with torch.no_grad():
-				adapter_visual_proj.linear.weight.data.copy_(model.visual.proj.t().data)
-		
-		# Store the adapter module
-		setattr(model.visual, f"{method.replace('-', '_')}_proj", adapter_visual_proj)
-		
-		# --- Monkey-patch the visual encoder's forward pass ---
-		def vit_forward_with_adapter_f(self, x: torch.Tensor):
-			# Standard ViT forward until the final projection
-			x = self.conv1(x)
-			x = x.reshape(x.shape[0], x.shape[1], -1)
-			x = x.permute(0, 2, 1)
-			cls = self.class_embedding.to(x.dtype) + torch.zeros(
-				x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
-			)
-			x = torch.cat([cls, x], dim=1)
-			x = x + self.positional_embedding.to(x.dtype)
-			x = self.dropout(x)
-			x = self.ln_pre(x)
-			x = x.permute(1, 0, 2)
-			x = self.transformer(x)
-			x = x.permute(1, 0, 2)
-			x = self.ln_post(x[:, 0, :])  # x is now [batch, original_proj_in_dim]
-			
-			# Apply the Tip-Adapter-F linear layer + cache logic
-			x = getattr(self, f"{method.replace('-', '_')}_proj")(x)
-			return x
-		
-		model.visual.forward = vit_forward_with_adapter_f.__get__(model.visual, type(model.visual))
-		
-		if verbose:
-			print(f"    ├─ Replaced final projection layer with {AdapterClass.__name__}")
-			print(f"    ├─ Input to adapter: {original_proj_in_dim}, Output from adapter: {original_proj_out_dim}")
-			print(f"    ├─ Cache feature dim: {original_proj_out_dim}")
-			print(f"    └─ Model's visual.forward has been updated.")
-	else:
-		raise ValueError(f"Unsupported adapter method: {method}")
+		print(f"    ├─ Selected Method        : {method_name}")
+		print(f"    ├─ Adapter Class          : {AdapterClass.__name__}")
+		print(f"    ├─ Cache Features Dim (D) : {cache_dim}")
+		print(f"    ├─ Initial β              : {initial_beta}")
+		print(f"    └─ Initial α              : {initial_alpha}")
 
-	# --- Memory Footprint for Tip-Adapter ---
-	mem_info = adapter_visual_proj.get_memory_footprint()
+	model = copy.deepcopy(clip_model)
+
+	# Freeze the ENTIRE base CLIP model (visual encoder + text encoder + logit_scale)
+	for param in model.parameters():
+		param.requires_grad = False
+
+	# Attach logit-space Tip-Adapter head directly on model (works for BOTH ViT and ResNet)
+	tip_head = AdapterClass(
+		cache_features_dim=cache_dim,
+		device=device,
+		initial_beta=initial_beta,
+		initial_alpha=initial_alpha,
+		verbose=verbose,
+	)
+	model.add_module("tip_adapter", tip_head)
+	model.tip_adapter_method = method
+
 	if verbose:
-		print(f"\n[4] MEMORY FOOTPRINT - {method_name}")
-		if method == "tip_adapter_f":
-			print(f"    ├─ Linear Layer Parameters: {mem_info.get('linear_params', 0):,}")
-			print(f"    ├─ Linear Layer Memory: {mem_info.get('linear_memory_mb', 0):.4f} MB")
-		print(f"    ├─ Cache Memory (depends on cache size): {mem_info['cache_memory_mb']} MB")
-		print(f"    ├─ Parameter Memory (β, α): {mem_info['param_memory_mb']} MB")
-		print(f"    ├─ Total Estimated: {mem_info['total_memory_mb']:.4f} MB")
-		if 'cache_size' in mem_info:
-			print(f"    └─ Cache Size (samples): {mem_info['cache_size']}")
-	
-	if method == "tip_adapter_f":
-		# Freeze entire model first
-		for param in model.parameters():
-			param.requires_grad = False
-		
-		# Unfreeze by direct module reference, not string matching
-		adapter_module = getattr(model.visual, "tip_adapter_f_proj")
-		for param in adapter_module.parameters():
-			param.requires_grad = True  # covers linear.weight, linear.bias, beta, alpha
-		
-		if verbose:
-			trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-			print(f"\n[5] PARAMETER FREEZING - {method_name}")
-			print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
-			print(f"    └─ Trainable Parameters: {trainable:,}")
-			for name, param in model.named_parameters():
-				if param.requires_grad:
-					print(f"       ✓ {name}: {param.numel():,}")
-	elif method == "tip_adapter":
-		# For training-free Tip-Adapter, only beta and alpha are trainable
-		for name, param in model.named_parameters():
-			param.requires_grad = "beta" in name or "alpha" in name
-		
-		if verbose:
-			trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-			print(f"\n[5] PARAMETER FREEZING - {method_name} (Training-Free)")
-			print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
-			print(f"    └─ Trainable Parameters (β, α): {trainable_params:,}")
-	else:
-		raise ValueError(f"Unsupported adapter method: {method}")
+		total_params = sum(p.numel() for p in model.parameters())
+		trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+		print(f"\n[2] PARAMETER FREEZING - {method_name}")
+		print(f"    ├─ Base CLIP Vision & Text : 100% FROZEN")
+		print(f"    ├─ Total Parameters (pre-cache)     : {total_params:,}")
+		print(f"    └─ Trainable Parameters (pre-cache) : {trainable_params:,} (populated on set_cache)")
 
 	return model
 

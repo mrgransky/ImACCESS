@@ -674,6 +674,7 @@ def run_qualitative_retrieval(
 	model.eval()
 
 	is_probe = hasattr(model, 'probe') and hasattr(model, 'clip_model')
+	is_tip = hasattr(model, 'tip_adapter')
 
 	if is_probe:
 		print(
@@ -697,6 +698,16 @@ def run_qualitative_retrieval(
 		else:
 			all_text_embeds_active = all_text_embeds
 			label_vocab_active     = label_vocab
+	elif is_tip:
+		print(
+			f"[qualitative] Tip-Adapter detected — using logit-space cache head "
+			f"(keys={tuple(model.tip_adapter.cache_keys.shape)}, "
+			f"alpha={model.tip_adapter.alpha.item():.3f}, beta={model.tip_adapter.beta.item():.3f})."
+		)
+		all_text_embeds = model.tip_adapter.text_features.detach().float().cpu()
+		label_vocab = class_names
+		all_text_embeds_active = all_text_embeds
+		label_vocab_active = label_vocab
 	else:
 		all_text_embeds = []
 		for start in range(0, len(class_names), text_batch_size):
@@ -719,9 +730,11 @@ def run_qualitative_retrieval(
 		img = Image.open(sample['image_path']).convert('RGB')
 		image = preprocess(img).unsqueeze(0).to(device)
 		with torch.no_grad():
-			img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1).cpu()
-		
-		sims = (img_embed @ all_text_embeds_active.T).squeeze(0) # [C_active]
+			img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)
+			if is_tip:
+				sims = model.tip_adapter(img_embed).squeeze(0).cpu()
+			else:
+				sims = (img_embed.cpu() @ all_text_embeds_active.T).squeeze(0) # [C_active]
 		topk_idx = sims.topk(i2t_topk).indices.tolist()
 		
 		i2t_results.append(
@@ -761,29 +774,40 @@ def run_qualitative_retrieval(
 	all_img_embeds = torch.cat(all_img_embeds, dim=0)  # [N_val, D] on CPU
 	
 	# Build once before the T2I loop, after all_text_embeds_active is defined
-	if is_probe:
+	if is_probe or is_tip:
 		label_to_embed_idx = {name: i for i, name in enumerate(label_vocab_active)}
+
+	# Precompute chunked Tip-Adapter logits [N_val, C] on CPU if Tip-Adapter
+	tip_val_logits = None
+	if is_tip:
+		tip_chunks = []
+		with torch.no_grad():
+			for start in range(0, all_img_embeds.shape[0], 512):
+				chunk_f = all_img_embeds[start : start + 512].to(device)
+				tip_chunks.append(model.tip_adapter(chunk_f).cpu())
+		tip_val_logits = torch.cat(tip_chunks, dim=0)  # [N_val, C]
 
 	# T2I loop
 	t2i_results = []
 	for query_label in t2i_samples:
-		if is_probe:
+		if is_tip and query_label in label_to_embed_idx:
+			idx = label_to_embed_idx[query_label]
+			sims = tip_val_logits[:, idx]
+		elif is_probe:
 			if query_label in label_to_embed_idx:
 				idx = label_to_embed_idx[query_label]
 				txt_embed = all_text_embeds_active[idx].unsqueeze(0)  # [1, D] already normalised
 			else:
-				# query_label is a zero-freq class — W row exists but was never trained.
-				# Options: (a) skip, (b) fall back to frozen text encoder with a warning.
-				# Option (b) is more informative for the qualitative figure:
 				print(f"  [probe T2I] '{query_label}' not in active vocab — falling back to ZS text encoder")
 				with torch.no_grad():
 					token = clip.tokenize([query_label], truncate=True).to(device)
 					txt_embed = torch.nn.functional.normalize(model.clip_model.encode_text(token).float(), dim=-1).cpu()
+			sims = (txt_embed @ all_img_embeds.T).squeeze(0)
 		else:
 			with torch.no_grad():
 				token = clip.tokenize([query_label], truncate=True).to(device)
 				txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1).cpu()
-		sims     = (txt_embed @ all_img_embeds.T).squeeze(0)
+			sims = (txt_embed @ all_img_embeds.T).squeeze(0)
 		topk_idx = sims.topk(t2i_topk).indices.tolist()
 		t2i_results.append(
 			{
@@ -880,41 +904,39 @@ def _load_models(
 					verbose=verbose,
 				)
 		elif strategy in ("tip_adapter", "tip_adapter_f"):
-			# Tip-Adapter cache is not reconstructible from checkpoint alone —
-			# the cache depends on support set features extracted at training time.
-			# For inference, we load the trainable projection weights only.
 			ft_model = get_adapter_peft_clip(
 				clip_model=base_model,
 				method=strategy,
 				bottleneck_dim=None,
 				activation=None,
-				initial_beta=params.get("init_beta", 1.0),
+				initial_beta=params.get("init_beta", 5.5),
 				initial_alpha=params.get("init_alpha", 1.0),
 				verbose=verbose,
 			)
-			# Load checkpoint first to get cache size
+			# Peek at checkpoint to resize dynamic cache tensors before load_state_dict
 			checkpoint = torch.load(checkpoint_path, map_location=device)
 			state_dict = checkpoint.get('model_state_dict', checkpoint)
-			
-			# Extract cache dimensions from checkpoint
-			cache_key = f"visual.{strategy.replace('-', '_')}_proj.cache_keys"
-			if cache_key in state_dict:
-				if verbose:
-					print(f"  Found cache in checkpoint: {cache_key}")
-	
-				cache_size = state_dict[cache_key].shape[0]
-				cache_dim = state_dict[cache_key].shape[1]
 
+			if "tip_adapter.cache_keys" in state_dict:
+				ck_shape = state_dict["tip_adapter.cache_keys"].shape
+				cv_shape = state_dict["tip_adapter.cache_values"].shape
+				tf_shape = state_dict["tip_adapter.text_features"].shape
+				adapter_module = ft_model.tip_adapter
+				if adapter_module.trainable_keys:
+					adapter_module.cache_keys = torch.nn.Parameter(
+						torch.zeros(ck_shape, device=device, dtype=torch.float32),
+						requires_grad=False,
+					)
+				else:
+					adapter_module.cache_keys = torch.zeros(ck_shape, device=device, dtype=torch.float32)
+				adapter_module.cache_values = torch.zeros(cv_shape, device=device, dtype=torch.float32)
+				adapter_module.text_features = torch.zeros(tf_shape, device=device, dtype=torch.float32)
 				if verbose:
-					print(f"  Cache size: {cache_size}, Cache dim: {cache_dim}")
-				
-				# Resize the cache buffers to match checkpoint
-				adapter_module = getattr(ft_model.visual, f"{strategy.replace('-', '_')}_proj")
-				adapter_module.cache_keys = torch.zeros(cache_size, cache_dim, device=device)
-				adapter_module.cache_values = torch.zeros(cache_size, cache_dim, device=device)
-				
-				if verbose:
-					print(f"  Resized cache to [{cache_size}, {cache_dim}]")
+					print(
+						f"  Resized Tip-Adapter cache buffers: keys={tuple(ck_shape)}, "
+						f"values={tuple(cv_shape)}, text_features={tuple(tf_shape)}"
+					)
+			del checkpoint, state_dict
 		elif strategy == "probe":
 			# ── Peek at checkpoint to get the correct probe output size ──────────
 			_ckpt = torch.load(checkpoint_path, map_location=device)

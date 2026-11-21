@@ -149,7 +149,30 @@ def check_training_health(
 									f"IA³ scaling vectors static: "
 									f"mean|s-1|={delta_mean:.2e} < 5e-04"
 							)
-	elif "adapter" in mode_lower or "tip" in mode_lower:
+	elif "clip_adapter" in mode_lower:
+			# CLIP-Adapter zero-initializes up_proj (like LoRA-B); inspect up_proj specifically
+			# so Kaiming-initialized down_proj does not mask a dead gradient signal.
+			up_norms = [
+					p.data.norm().item()
+					for n, p in model.named_parameters()
+					if p.requires_grad and "up_proj" in n
+			]
+			if up_norms:
+					mean_up = sum(up_norms) / len(up_norms)
+					if mean_up < 1e-04:
+							issues.append(f"CLIP-Adapter up_proj static: mean norm={mean_up:.2e} < 1e-04")
+	elif "tip_adapter" in mode_lower or "tip" in mode_lower:
+			# Tip-Adapter-F initializes cache_keys to unit-norm support features;
+			# measure norm drift | ||k_m||_2 - 1 | as a movement signal.
+			key_params = [
+					p for n, p in model.named_parameters()
+					if p.requires_grad and "cache_keys" in n
+			]
+			if key_params:
+					mean_drift = sum((p.detach().float().norm(dim=-1) - 1.0).abs().mean().item() for p in key_params) / len(key_params)
+					if mean_drift < 1e-05:
+							issues.append(f"Tip-Adapter-F cache_keys static: mean|‖k‖-1|={mean_drift:.2e} < 1e-05")
+	elif "adapter" in mode_lower:
 			adapter_norms = [
 					p.data.norm().item()
 					for n, p in model.named_parameters()
@@ -495,6 +518,36 @@ def chunked_probe_logit_computation(
 		end_i = min(i + chunk_size, num_queries)
 		query_chunk = image_embeds[i:end_i].to(device=device, dtype=probe_dtype)
 		logits_matrix[i:end_i] = probe_head(query_chunk).float() / temperature
+
+	return logits_matrix
+
+@torch.no_grad()
+def chunked_tip_adapter_logit_computation(
+	image_embeds: torch.Tensor,
+	tip_adapter_head: torch.nn.Module,
+	temperature: float,
+	chunk_size: int = 1000,
+) -> torch.Tensor:
+	"""
+	Compute exact Tip-Adapter / Tip-Adapter-F logits in chunks (Zhang et al., ECCV 2022 Eq. 4-5):
+		tip_logits = (f_norm @ W_c.T) / temperature + alpha * exp(-beta * (1 - f_norm @ K_norm.T)) @ L_val
+	"""
+	num_queries = image_embeds.shape[0]
+	device = image_embeds.device
+	tip_adapter_head.eval()
+
+	num_classes = tip_adapter_head.text_features.shape[0]
+	logits_matrix = torch.zeros(
+		num_queries,
+		num_classes,
+		device=device,
+		dtype=torch.float32,
+	)
+
+	for i in range(0, num_queries, chunk_size):
+		end_i = min(i + chunk_size, num_queries)
+		query_chunk = image_embeds[i:end_i].to(device=device, dtype=torch.float32)
+		logits_matrix[i:end_i] = tip_adapter_head(query_chunk, temperature=temperature).float()
 
 	return logits_matrix
 
@@ -1321,6 +1374,7 @@ def get_validation_metrics(
 	min_number_samples: int = int(2e4),
 	class_embeds_override: Optional[torch.Tensor] = None,
 	use_probe_logits: bool = False,
+	use_tip_logits: bool = False,
 	active_mask: Optional[torch.Tensor] = None,
 	verbose: bool = True,
 ) -> Dict:
@@ -1380,8 +1434,8 @@ def get_validation_metrics(
 	# Step 2: Load or compute embeddings
 	cache_loaded = False
 	
-	# Try to use provided cache first
-	if not is_training and embeddings_cache is not None:
+	# Try to use provided cache first (callers only pass embeddings_cache when visual encoder is frozen)
+	if embeddings_cache is not None:
 		all_image_embeds, _ = embeddings_cache
 		all_labels = _prepare_labels_tensor(validation_loader, num_samples, n_classes, device)
 		cache_loaded = True
@@ -1491,15 +1545,44 @@ def get_validation_metrics(
 					f"μ±σ: {i2t_similarity.mean().item():.3f} ± {i2t_similarity.std().item():.3f} "
 					f"| frac(>0): {(i2t_similarity > 0).float().mean().item():.5f}"
 				)
+	elif use_tip_logits:
+		if not hasattr(model, "tip_adapter"):
+			raise AttributeError(
+				f"use_tip_logits=True requires model to have a '.tip_adapter' head, got {type(model)}."
+			)
+
+		i2t_similarity = chunked_tip_adapter_logit_computation(
+			image_embeds=device_image_embeds,
+			tip_adapter_head=model.tip_adapter,
+			temperature=temperature,
+			chunk_size=chunk_size,
+		)
+		t2i_similarity = i2t_similarity.T.contiguous()
+		device_class_text_embeds = model.tip_adapter.text_features.detach().to(device, non_blocking=True).float()
+
+		if verbose:
+			print(f"\n[TIP-ADAPTER EVAL — EXACT LOGIT-SPACE SCORING]")
+			print(f"  ├─ Scoring fn  : (f_norm @ W_c.T)/temp + alpha * exp(-beta*(1 - f_norm @ K_norm.T)) @ L_val")
+			print(f"  ├─ Cache keys  : {tuple(model.tip_adapter.cache_keys.shape)} (trainable={model.tip_adapter.trainable_keys})")
+			print(f"  ├─ Cache vals  : {tuple(model.tip_adapter.cache_values.shape)}")
+			print(f"  ├─ alpha, beta : alpha={model.tip_adapter.alpha.item():.4f}, beta={model.tip_adapter.beta.item():.4f}, temp={temperature}")
+			print(
+				f"  └─ Logits      : (min, max)=({i2t_similarity.min().item():.3f}, {i2t_similarity.max().item():.3f}) "
+				f"μ±σ={i2t_similarity.mean().item():.3f}±{i2t_similarity.std().item():.3f}"
+			)
 	else:
+		eval_amp_dtype = torch.float32
+		if torch.cuda.is_available() and torch.device(device).type == "cuda":
+			cuda_cap = torch.cuda.get_device_capability()
+			eval_amp_dtype = torch.bfloat16 if (cuda_cap[0] >= 8 and torch.cuda.is_bf16_supported()) else torch.float16
+
 		if class_embeds_override is not None:
 			# Legacy override path (L2-normalized custom class embeddings)
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
-				class_text_embeds = torch.nn.functional.normalize(class_embeds_override, dim=-1).to(device).float()
+			class_text_embeds = torch.nn.functional.normalize(class_embeds_override.float(), dim=-1).to(device)
 			if verbose:
 				print(f"class_text_embeds [override]: {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
 		else:
-			# Standard path: encode class names with frozen text encoder
+			# Standard path: encode class names with text encoder (including text adapter if active)
 			text_batch_size = validation_loader.batch_size
 			if verbose:
 				print(f"Pre-encoding {n_classes} labels (batch_size={text_batch_size})")
@@ -1507,13 +1590,17 @@ def get_validation_metrics(
 			class_text_embeds = []
 			model.eval()
 			with torch.no_grad():
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
+				with torch.amp.autocast(
+					device_type=torch.device(device).type,
+					enabled=torch.cuda.is_available() and torch.device(device).type == "cuda",
+					dtype=eval_amp_dtype,
+				):
 					for i in tqdm(range(0, n_classes, text_batch_size), desc="Encoding batched labels"):
 						end_idx = min(i + text_batch_size, n_classes)
 						batch_class_names = class_names[i:end_idx]
 						batch_class_texts = clip.tokenize(batch_class_names).to(device)
 						batch_embeds = model.encode_text(batch_class_texts)
-						batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
+						batch_embeds = torch.nn.functional.normalize(batch_embeds.float(), dim=-1)
 						class_text_embeds.append(batch_embeds.cpu())
 
 						del batch_class_texts, batch_embeds
@@ -1524,7 +1611,8 @@ def get_validation_metrics(
 			if verbose:
 				print(f"class_text_embeds: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
 
-		device_class_text_embeds = class_text_embeds.to(device, non_blocking=True)
+		device_class_text_embeds = class_text_embeds.to(device, non_blocking=True).float()
+		device_image_embeds = device_image_embeds.float()
 
 		i2t_similarity = chunked_similarity_computation(
 			device_image_embeds, 
@@ -1562,7 +1650,7 @@ def get_validation_metrics(
 		device_image_embeds=device_image_embeds,
 		device_class_text_embeds=device_class_text_embeds,
 		temperature=temperature,
-		use_precomputed_logits=use_probe_logits,
+		use_precomputed_logits=(use_probe_logits or use_tip_logits),
 		active_mask=device_active_mask if use_probe_logits else None,
 		verbose=verbose,
 	)
@@ -1574,6 +1662,8 @@ def get_validation_metrics(
 	)
 	if use_probe_logits:
 		cache_key_base += "_probe_logits"
+	if use_tip_logits:
+		cache_key_base += "_tip_logits"
 	if model_hash:
 		cache_key_base += f"_{model_hash}"
 
@@ -1925,16 +2015,18 @@ def get_embeddings(
 					torch.cuda.empty_cache()
 
 			images = images.to(device, non_blocking=True)
-			if device.type == "cuda":
-				images = images.half()
+			eval_amp_dtype = torch.float32
+			if torch.cuda.is_available() and torch.device(device).type == "cuda":
+				cuda_cap = torch.cuda.get_device_capability()
+				eval_amp_dtype = torch.bfloat16 if (cuda_cap[0] >= 8 and torch.cuda.is_bf16_supported()) else torch.float16
 
 			with torch.amp.autocast(
-				device_type=device.type, 
-				dtype=torch.bfloat16 if device.type == 'cuda' else torch.float32,
-				enabled=torch.cuda.is_available(),
+				device_type=torch.device(device).type, 
+				dtype=eval_amp_dtype,
+				enabled=torch.cuda.is_available() and torch.device(device).type == "cuda",
 			):
 				image_embeds = model.encode_image(images)
-				image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
+				image_embeds = torch.nn.functional.normalize(image_embeds.float(), dim=-1)
 
 			# offload to CPU
 			image_embeds = image_embeds.cpu()
@@ -2676,6 +2768,7 @@ def evaluate_best_model(
 	lora_params: Optional[Dict] = None,
 	class_embeds_override: Optional[torch.Tensor] = None,
 	use_probe_logits: bool = False,
+	use_tip_logits: bool = False,
 	tier_spec_path: str = None,
 	verbose: bool = False,
 ):
@@ -2785,13 +2878,14 @@ def evaluate_best_model(
 		topK_values=topk_values,
 		finetune_strategy=finetune_strategy,
 		cache_dir=cache_dir,
-		embeddings_cache=embeddings_cache if model_source == "current" else None,
+		embeddings_cache=embeddings_cache if (model_source == "current" or use_tip_logits) else None,
 		lora_params=lora_params,
 		is_training=False, # Use cache for final evaluation/inference
 		model_hash=get_model_hash(model),
 		temperature=temperature,
-		class_embeds_override=None if use_probe_logits else class_embeds_override,
+		class_embeds_override=None if (use_probe_logits or use_tip_logits) else class_embeds_override,
 		use_probe_logits=use_probe_logits,
+		use_tip_logits=use_tip_logits,
 		active_mask=active_mask if use_probe_logits else None,
 		verbose=verbose,
 	)

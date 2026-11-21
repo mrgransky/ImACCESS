@@ -115,9 +115,9 @@ def main():
 	# clip-adapter-v, clip-adapter-t, clip-adapter-vt:
 	parser.add_argument('--bottleneck_dim', type=int, default=256, help='Bottleneck dimension (used if strategy=adapter)')
 
-	parser.add_argument('--initial_beta', type=float, default=1.0, help='initial_beta')
-	parser.add_argument('--initial_alpha', type=float, default=1.0, help='initial_alpha')
-	parser.add_argument('--support_shots', type=int, default=16, help='support_shots')
+	parser.add_argument('--initial_beta', type=float, default=5.5, help='Tip-Adapter initial sharpness beta (Zhang et al., ECCV 2022 default: 5.5)')
+	parser.add_argument('--initial_alpha', type=float, default=1.0, help='Tip-Adapter initial residual alpha (Zhang et al., ECCV 2022 default: 1.0)')
+	parser.add_argument('--support_shots', type=int, default=16, help='Target support shots per class for Tip-Adapter cache')
 
 	# Baselines
 	parser.add_argument('--baseline_method', '-bm', type=str, choices=['zero_shot', 'probe'], default=None, help='Baseline method')
@@ -168,7 +168,7 @@ def main():
 				f"cdelta_{args.cumulative_delta:.1e}_"
 				f"lr_{args.learning_rate:.1e}_"
 				f"wd_{args.weight_decay:.1e}_"
-				f"temp_{args.temperature}_"
+				f"temp_{getattr(args, 'temperature', 0.07)}_"
 				f"bs_{args.batch_size}_"
 				f"do_{args.dropout}"
 			)

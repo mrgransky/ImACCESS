@@ -534,9 +534,7 @@ def get_model_hash(model: torch.nn.Module, exact: bool = False) -> str:
 	return hasher.hexdigest()
 
 # Parameter-name substrings that are EXPECTED to be all-zero at initialization.
-# Extend this tuple if your CLIP-Adapter zero-inits its residual output layer,
-# e.g. EXPECTED_ZERO_PATTERNS += ('adapter.out_proj',)
-EXPECTED_ZERO_PATTERNS = ('lora_b', 'lambda_b', 'vera_b')
+EXPECTED_ZERO_PATTERNS = ('lora_b', 'lambda_b', 'vera_b', 'up_proj')
 
 # Class-name keywords used to detect injected adapter modules
 ADAPTER_KEYWORDS = ('lora', 'dora', 'vera', 'ia3', 'adapter', 'tip')
@@ -664,16 +662,18 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 			return tr, fr, tr + fr, uniq, seen
 	visual_prefixes = ['visual.']
 	core_text_prefixes = ['transformer.', 'token_embedding', 'positional_embedding', 'ln_final', 'text_projection']
-	# DYNAMIC CATCH-ALL: any top-level param group that is not visual / logit_scale / core-text
-	# (ia3_text_projection, lora_plus_text_projection, probe heads, adapters, ...)
+	tip_prefixes = ['tip_adapter.']
+	# DYNAMIC CATCH-ALL: any top-level param group that is not visual / tip_adapter / logit_scale / core-text
+	# (ia3_text_projection, lora_plus_text_projection, text_adapter, probe heads, ...)
 	text_adapter_prefixes = sorted(set(
 			n.split('.')[0] for n in name_to_p
 			if not n.startswith('visual.')
+			and not n.startswith('tip_adapter.')
 			and n != 'logit_scale'
 			and not any(n.startswith(p) for p in core_text_prefixes)
 	))
 	print(f"\n  [Prefix verification]")
-	for label, prefs in [('VISUAL', visual_prefixes), ('CORE_TEXT', core_text_prefixes), ('TEXT_ADAPTERS', text_adapter_prefixes)]:
+	for label, prefs in [('VISUAL', visual_prefixes), ('CORE_TEXT', core_text_prefixes), ('TEXT_ADAPTERS', text_adapter_prefixes), ('TIP_ADAPTER', tip_prefixes)]:
 			for pref in prefs:
 					hits = [n for n in name_to_p if n.startswith(pref)]
 					if hits:
@@ -683,11 +683,12 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 										f"({n_tr} train / {n_fr} frozen), "
 										f"{sum(name_to_p[n].numel() for n in hits):,} numel")
 					else:
-							if label != 'TEXT_ADAPTERS':
+							if label not in ('TEXT_ADAPTERS', 'TIP_ADAPTER'):
 									print(f"    ✗ '{pref}' -> 0 matches")
 	img_tr, img_fr, img_to, _, _ = find(visual_prefixes)
 	txt_core_tr, txt_core_fr, txt_core_to, _, _ = find(core_text_prefixes)
 	txt_adapter_tr, txt_adapter_fr, txt_adapter_to, text_adapter_list, _ = find(text_adapter_prefixes)
+	tip_tr, tip_fr, tip_to, _, _ = find(tip_prefixes)
 	total_tr = sum(p.numel() for _, p in named if p.requires_grad)
 	total_fr = sum(p.numel() for _, p in named if not p.requires_grad)
 	total_to = total_tr + total_fr
@@ -1002,11 +1003,13 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 				f"({text_tr/text_to*100:.3f}%)" if text_to else f"  Text : none")
 	if text_adapter_list:
 			print(f"         Text-side adapter/extra groups: {text_adapter_list}")
+	if tip_to > 0:
+			print(f"  Tip  : {tip_to:>14,} total | trainable {tip_tr:>12,} ({tip_tr/tip_to*100:.3f}%)")
 	print(f"  Logit: {logit}")
-	if img_to + text_to + logit == total_to:
+	if img_to + text_to + tip_to + logit == total_to:
 			print(f"  Total: {total_to:>14,} total | trainable {total_tr:>12,} -> [OK ✅]")
 	else:
-			diff = total_to - img_to - text_to - logit
+			diff = total_to - img_to - text_to - tip_to - logit
 			print(f"  Total: {total_to:>14,} total | trainable {total_tr:>12,} -> [FAIL ❌] diff={diff:,}")
 	# ──────────────────────────────────────────────
 	# 13. Quick health summary
@@ -1094,19 +1097,25 @@ def get_parameters_info_orig(model, mode):
 	img_trainable_percent = (img_trainable / img_total) * 100 if img_total > 0 else 0
 	img_frozen_percent = (img_frozen / img_total) * 100 if img_total > 0 else 0
 
-	# Text encoder parameters (includes adapted text_projection module if present)
+	# Text encoder parameters (includes adapted text_projection or text_adapter module if present)
 	adapted_text_proj = getattr(model, f"{mode}_text_projection", None)
+	text_adapter_mod = getattr(model, "text_adapter", None) or getattr(model, "_text_adapter", None)
 	text_submodules = [
 		model.transformer,
 		model.token_embedding,
 		model.ln_final,
 		adapted_text_proj if adapted_text_proj is not None else getattr(model, "text_projection", None),
+		text_adapter_mod,
 	]
 	text_trainable = sum(count_params(m)[0] for m in text_submodules)
 	text_frozen = sum(count_params(m)[1] for m in text_submodules)
 	text_total = sum(count_params(m)[2] for m in text_submodules)
 	text_trainable_percent = (text_trainable / text_total) * 100 if text_total > 0 else 0
 	text_frozen_percent = (text_frozen / text_total) * 100 if text_total > 0 else 0
+
+	# Optional Tip-Adapter cache head (lives at top-level model.tip_adapter)
+	tip_adapter_mod = getattr(model, "tip_adapter", None)
+	tip_trainable, tip_frozen, tip_total = count_params(tip_adapter_mod)
 
 	# Logit scale (scalar parameter)
 	logit_scale_params = model.logit_scale.numel()
@@ -1116,6 +1125,10 @@ def get_parameters_info_orig(model, mode):
 	print(f"   ├─ {mode.upper()}")
 	print(f"   ├─ Image Encoder: Total: {img_total:12,d} (Trainable [Unfrozen]): {img_trainable:12,d} ({img_trainable_percent:<8.3f}%) Frozen: {img_frozen:12,d} ({img_frozen_percent:<8.3f}%)")
 	print(f"   ├─ Text Encoder : Total: {text_total:12,d} (Trainable [Unfrozen]): {text_trainable:12,d} ({text_trainable_percent:<8.3f}%) Frozen: {text_frozen:12,d} ({text_frozen_percent:<8.3f}%)")
+	if tip_total > 0:
+		tip_tr_pct = (tip_trainable / tip_total) * 100
+		tip_fr_pct = (tip_frozen / tip_total) * 100
+		print(f"   ├─ Tip-Adapter  : Total: {tip_total:12,d} (Trainable [Unfrozen]): {tip_trainable:12,d} ({tip_tr_pct:<8.3f}%) Frozen: {tip_frozen:12,d} ({tip_fr_pct:<8.3f}%)")
 	print(f"   ├─ Logit Scale: {logit_scale_params}")
 	print(f"   └─ Total: {total_params:,}  (Trainable [Unfrozen]): {total_trainable:,} ({total_trainable_percent:.3f}%) Frozen: {total_frozen:,} ({total_frozen_percent:.3f}%)")
 	print()

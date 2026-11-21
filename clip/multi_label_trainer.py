@@ -48,7 +48,7 @@ def get_text_embeddings(
 
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
 				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds.float(), dim=-1)
 				all_class_embeds.append(batch_embeds.cpu()) # Move to CPU immediately to save GPU memory
 				
 				# Clean up
@@ -5169,6 +5169,8 @@ def clip_adapter_finetune_multi_label(
 		f"clip_adapter_method must be one of {valid_methods}, got '{clip_adapter_method}'"
 	)
 	text_adapter_active = clip_adapter_method in ("clip_adapter_t", "clip_adapter_vt")
+	visual_adapter_active = clip_adapter_method in ("clip_adapter_v", "clip_adapter_vt")
+	device = torch.device(device)
 
 	window_size = minimum_epochs + 1
 	if loss_weights is None:
@@ -5202,9 +5204,11 @@ def clip_adapter_finetune_multi_label(
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Temperature: {temperature}")
 		print(f"   ├─ Loss weights: {loss_weights}")
-		print(f"   ├─ Text adapter active: {text_adapter_active}")
-	
-	if torch.cuda.is_available():
+		print(f"   ├─ Visual adapter active: {visual_adapter_active}")
+		print(f"   ├─ Text adapter active  : {text_adapter_active}")
+
+	amp_dtype = torch.float32
+	if torch.cuda.is_available() and device.type == "cuda":
 		gpu_name = torch.cuda.get_device_name(device)
 		gpu_mem  = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 		cuda_capability = torch.cuda.get_device_capability()
@@ -5229,7 +5233,7 @@ def clip_adapter_finetune_multi_label(
 		pairwise_imp_threshold=pairwise_imp_threshold,
 	)
 
-	# Inject adapter
+	# Inject adapter (post-projection multimodal space, convex residual ratio=0.2 per Gao et al. IJCV 2023)
 	model = get_adapter_peft_clip(
 		clip_model=model,
 		method=clip_adapter_method,
@@ -5248,11 +5252,11 @@ def clip_adapter_finetune_multi_label(
 			print(f"  {name}: {numel:,}")
 		print(f"[TOTAL] trainable: {sum(n for _,n in trainable):,} frozen: {sum(n for _,n in frozen):,}")
 
-	# Loss masks
+	# Loss masks (respect passed pw_mode)
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		pw_mode="log",
+		pw_mode=pw_mode,
 		device=device,
 		verbose=verbose,
 	)
@@ -5263,7 +5267,7 @@ def clip_adapter_finetune_multi_label(
 	N           = masks["N"]
 	train_freq  = masks["train_freq"]
 
-	#Criteria
+	# Criteria
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
 	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none')
 	if verbose:
@@ -5271,28 +5275,34 @@ def clip_adapter_finetune_multi_label(
 		print(f"   ├─ N={N} active={active_mask.sum().item():,}")
 		print(f"[T2I] {criterion_t2i.__class__.__name__} no pos_weight")
 
-	# Optimizer
-	adapter_params = [p for p in model.parameters() if p.requires_grad]
+	# Optimizer — exclude 0D/1D parameters (biases, LayerNorm, scalar ratios) from weight decay
+	decay_params = [p for n, p in model.named_parameters() if p.requires_grad and p.ndim >= 2]
+	no_decay_params = [p for n, p in model.named_parameters() if p.requires_grad and p.ndim < 2]
+	adapter_params = decay_params + no_decay_params
 	if not adapter_params:
 		raise ValueError("No trainable parameters found. Check get_adapter_peft_clip.")
 
+	param_groups = []
+	if decay_params:
+		param_groups.append({"params": decay_params, "weight_decay": weight_decay})
+	if no_decay_params:
+		param_groups.append({"params": no_decay_params, "weight_decay": 0.0})
+
 	optimizer = torch.optim.AdamW(
-		params=adapter_params,
+		params=param_groups,
 		lr=learning_rate,
 		betas=(0.9, 0.98),
 		eps=1e-6,
-		weight_decay=weight_decay,
 	)
 	if verbose:
 		print(f"\n{optimizer.__class__.__name__}")
-		print(f"  ├─ Params: {sum(p.numel() for p in adapter_params):,}")
+		print(f"  ├─ Params: {sum(p.numel() for p in adapter_params):,} (decay: {sum(p.numel() for p in decay_params):,}, no_decay: {sum(p.numel() for p in no_decay_params):,})")
 		print(f"  ├─ LR: {learning_rate}")
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  └─ Weight Decay: {weight_decay}")
 
 	# Scheduler
-	# approximate T_max: N epochs * minimum_epochs
 	estimated_epochs = 2 * minimum_epochs
 	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
@@ -5310,12 +5320,15 @@ def clip_adapter_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 
+	# GradScaler is ONLY needed for FP16 (never BF16 or FP32)
+	use_grad_scaler = torch.cuda.is_available() and device.type == "cuda" and (amp_dtype == torch.float16)
 	scaler = torch.amp.GradScaler(
-		device=device,
-		init_scale=2**15,      # 2048 (Conservative start)
-		growth_factor=2.0,     # Smoother growth than default 2.0
-		backoff_factor=0.5,    # Standard
-		growth_interval=2000,  # Keep scale stable longer
+		device=device.type,
+		enabled=use_grad_scaler,
+		init_scale=2**15,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
 	)
 
 	if verbose:
@@ -5325,7 +5338,7 @@ def clip_adapter_finetune_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'torch.float32'}")
 		print()
 
 	# Checkpoint path
@@ -5344,6 +5357,11 @@ def clip_adapter_finetune_multi_label(
 		f".pth"
 	)
 
+	# Pre-encode frozen class text features ONCE:
+	# - For clip_adapter_v: L2-normalized frozen text embeddings reused every batch.
+	# - For clip_adapter_t / clip_adapter_vt: unnormalized post-projection base text features [C, D]
+	#   computed once from frozen CLIP text encoder; model.text_adapter(base_class_feats) is applied
+	#   per batch with gradients (avoids re-running the 12-layer text transformer over C classes).
 	if not text_adapter_active:
 		all_class_embeds = get_text_embeddings(
 			model=model,
@@ -5351,10 +5369,36 @@ def clip_adapter_finetune_multi_label(
 			dtype=amp_dtype,
 			verbose=verbose,
 		)
+		base_class_feats = None
 	else:
-		# clip_adapter_t / clip_adapter_vt: will encode at start of each epoch
+		try:
+			class_names = validation_loader.dataset.dataset.classes
+		except AttributeError:
+			class_names = validation_loader.dataset.unique_labels
+		model.eval()
+		text_batch_size = validation_loader.batch_size
+		base_chunks = []
+		with torch.no_grad(), torch.amp.autocast(
+			device_type=device.type,
+			enabled=torch.cuda.is_available() and device.type == "cuda",
+			dtype=amp_dtype,
+		):
+			for i in range(0, len(class_names), text_batch_size):
+				batch_names = class_names[i : i + text_batch_size]
+				batch_tokens = clip.tokenize(batch_names).to(device)
+				batch_base = model.encode_base_text(batch_tokens).float()
+				base_chunks.append(batch_base.cpu())
+				del batch_tokens, batch_base
+		base_class_feats = torch.cat(base_chunks, dim=0).to(device).detach()
 		all_class_embeds = None
-		print(f"\n>> Text adapter active — class texts will be re-encoded each epoch.")
+		if verbose:
+			print(f"\n>> Text adapter active — cached frozen base text features: {tuple(base_class_feats.shape)} ({base_class_feats.dtype})")
+
+	def _get_adapted_class_embeds_no_grad() -> torch.Tensor:
+		model.text_adapter.eval()
+		with torch.no_grad():
+			adapted = model.text_adapter(base_class_feats).float()
+			return torch.nn.functional.normalize(adapted, dim=-1)
 
 	training_losses = []
 	validation_losses = []
@@ -5370,14 +5414,12 @@ def clip_adapter_finetune_multi_label(
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
 
-		# Re-encode class texts if text adapter is active (weights changed last epoch)
+		# Keep frozen CLIP backbone in eval mode (protects BatchNorm/Dropout); only adapters in train mode
+		model.eval()
+		if visual_adapter_active:
+			model.visual.adapter.train()
 		if text_adapter_active:
-			print(f">> Re-encoding class texts with updated text adapter (epoch {epoch+1})...")
-			all_class_embeds = encode_class_texts()
-			if verbose:
-				print(f"   all_class_embeds: {all_class_embeds.shape} {all_class_embeds.dtype}")
-
-		model.train()
+			model.text_adapter.train()
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 
 		epoch_loss_total = 0.0
@@ -5393,18 +5435,15 @@ def clip_adapter_finetune_multi_label(
 
 			with torch.amp.autocast(
 				device_type=device.type, 
-				enabled=torch.cuda.is_available(),
+				enabled=torch.cuda.is_available() and device.type == "cuda",
 				dtype=amp_dtype,
 			):
-				# For clip_adapter_vt / clip_adapter_t: text adapter is in train mode,
-				# so we must pass through encode_text with gradients for the text adapter.
-				# For clip_adapter_v: all_class_embeds is already pre-encoded and detached.
 				if text_adapter_active:
-					# Re-encode with gradients so text adapter receives gradient signal
-					batch_class_embeds = model.encode_text(all_class_tokens)
-					batch_class_embeds = torch.nn.functional.normalize(batch_class_embeds, dim=-1)
+					# Pass frozen base text features through trainable text_adapter WITH gradients
+					batch_class_embeds = model.text_adapter(base_class_feats)
+					batch_class_embeds = torch.nn.functional.normalize(batch_class_embeds.float(), dim=-1)
 				else:
-					batch_class_embeds = all_class_embeds  # pre-encoded, detached
+					batch_class_embeds = all_class_embeds  # pre-encoded, detached, FP32
 
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
@@ -5427,12 +5466,11 @@ def clip_adapter_finetune_multi_label(
 					f"loss_i2t: {loss_i2t} "
 					f"loss_t2i: {loss_t2i}"
 				)
-				# no zero_grad needed here — already done above
 				continue # skip this batch
 
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_(adapter_params, max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
@@ -5463,9 +5501,8 @@ def clip_adapter_finetune_multi_label(
 
 		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")
 
-		# For validation loss: always use freshly encoded class embeds
-		# (for clip_adapter_t/vt, re-encode under no_grad with current adapter weights)
-		val_class_embeds = encode_class_texts() if text_adapter_active else all_class_embeds
+		# For validation loss: use freshly adapted text embeddings when text adapter is active
+		val_class_embeds = _get_adapted_class_embeds_no_grad() if text_adapter_active else all_class_embeds
 
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
@@ -5490,6 +5527,7 @@ def clip_adapter_finetune_multi_label(
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
+			class_embeds_override=val_class_embeds if text_adapter_active else None,
 			verbose=verbose,
 		)
 
@@ -5536,7 +5574,7 @@ def clip_adapter_finetune_multi_label(
 			should_abort = check_training_health(
 				model=model,
 				epoch=epoch,
-				mode=mode,
+				mode=clip_adapter_method,
 				training_losses=training_losses,
 				validation_losses=validation_losses,
 				align_score=align_score,
@@ -5691,71 +5729,54 @@ def tip_adapter_finetune_multi_label(
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
 	topk_values: List[int],
-	initial_beta: float=1.0,
-	initial_alpha: float=1.0,
-	support_shots: int=16,  # Number of support samples per class
-	temperature: float=0.07,
-	loss_weights: Dict[str, float]=None,
-	pw_mode: str="log",
-	verbose: bool=True,
+	initial_beta: float = 5.5,
+	initial_alpha: float = 1.0,
+	support_shots: int = 16,  # Target support samples per class (deduplicated across multi-label images)
+	temperature: float = 0.07,
+	loss_weights: Dict[str, float] = None,
+	pw_mode: str = "log",
+	verbose: bool = True,
 ):
 	"""
-	Fine-tunes a CLIP model using Tip-Adapter or Tip-Adapter-F technique for multi-label datasets.
-	
-	Tip-Adapter creates a cache from support set and adapts at test time using a key-value cache.
-	Tip-Adapter-F additionally trains a linear projection layer for better adaptation.
-	
-	Key differences from single-label:
-	- Uses BCEWithLogitsLoss for multi-label classification
-	- Constructs cache with multi-label support samples
-	- Computes bidirectional I2T and T2I losses
-	- Pre-encodes all class embeddings for efficiency
-	
-	Args:
-		model: Pre-trained CLIP model.
-		train_loader: torch.utils.data.DataLoader for training data (multi-label format).
-		validation_loader: torch.utils.data.DataLoader for validation data (multi-label format).
-		num_epochs: Number of training epochs.
-		print_every: Print training stats every N batches.
-		learning_rate: Learning rate for the optimizer.
-		weight_decay: Weight decay for the optimizer.
-		device: Device to run the model on.
-		results_dir: Directory to save results and checkpoints.
-		tip_adapter_method: "tip_adapter" (training-free) or "tip_adapter_f" (with training).
-		initial_beta: Initial temperature parameter for softmax in cache attention.
-		initial_alpha: Initial scaling factor for cache adaptation.
-		patience: Patience for early stopping.
-		min_delta: Minimum change to qualify as an improvement.
-		cumulative_delta: Cumulative change threshold for early stopping.
-		minimum_epochs: Minimum epochs before early stopping.
-		volatility_threshold: Threshold for validation loss volatility.
-		slope_threshold: Threshold for validation loss slope.
-		pairwise_imp_threshold: Threshold for pairwise improvement.
-		topk_values: List of k values for Top-K accuracy.
-		support_shots: Number of support samples per class for cache construction.
-		temperature: Temperature scaling for similarity computation.
-		loss_weights: Weights for I2T and T2I losses (default: {"i2t": 0.5, "t2i": 0.5}).
-		verbose: Enable detailed logging.
+	Adapts a frozen CLIP model using Tip-Adapter (training-free) or Tip-Adapter-F (fine-tuned cache keys)
+	for multi-label classification & retrieval, faithful to Zhang et al. (ECCV 2022, Eq. 4-6):
+
+		clip_logits  = (f_norm @ W_c.T) / temperature
+		cache_logits = exp(-beta * (1 - f_norm @ K_norm.T)) @ L_val
+		tip_logits   = clip_logits + alpha * cache_logits
+
+	Multi-label adaptations:
+		- Entire CLIP visual and text encoders remain completely frozen.
+		- Support set images are deduplicated (each multi-label image enters the cache at most once,
+		  selected greedily so every active class receives up to `support_shots` coverage).
+		- Cache values L_val ∈ R^{M × C} are column-normalized by per-class support counts so head,
+		  body, and rare classes share identical [0, 1] cache affinity scale while inactive classes
+		  remain 0 and fall back cleanly to zero-shot CLIP.
+		- Tip-Adapter: zero gradient steps; tunes (alpha, beta) via validation grid search.
+		- Tip-Adapter-F: unfreezes and fine-tunes ONLY the cache keys K ∈ R^{M × D} via AdamW +
+		  cosine schedule on bidirectional multi-label BCE loss, then refines (alpha, beta) via
+		  validation grid search (accepting only if val loss improves).
 	"""
-	
+	valid_methods = ("tip_adapter", "tip_adapter_f")
+	assert tip_adapter_method in valid_methods, (
+		f"tip_adapter_method must be one of {valid_methods}, got '{tip_adapter_method}'"
+	)
+	device = torch.device(device)
+
 	window_size = minimum_epochs + 1
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
-		
+
 	# Check for non-zero dropout in the base model
-	dropout_values = []
-	for name, module in model.named_modules():
-		if isinstance(module, torch.nn.Dropout):
-			dropout_values.append((name, module.p))
-	
-	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	non_zero_dropouts = [
+		(name, module.p)
+		for name, module in model.named_modules()
+		if isinstance(module, torch.nn.Dropout) and module.p > 0
+	]
 	if verbose and non_zero_dropouts:
 		dropout_info = ", ".join([f"{name}: p={p}" for name, p in non_zero_dropouts])
-		print(
-			f"[Tip-Adapter Multi-Label] WARNING: Non-zero dropout detected in base model: {dropout_info}. "
-			f"This might affect the frozen base model's behavior during adaptation."
-		)
-	
+		print(f"[Tip-Adapter Multi-Label] WARNING: Non-zero dropout detected in base model: {dropout_info}.")
+
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
@@ -5768,46 +5789,40 @@ def tip_adapter_finetune_multi_label(
 		slope_threshold=slope_threshold,
 		pairwise_imp_threshold=pairwise_imp_threshold,
 	)
-	
-	# Dataset and directory setup
+
+	# Dataset and class metadata (consistent order with compute_loss_masks / get_text_embeddings / evals)
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	# GET CLASS INFORMATION
 	try:
-		class_names = validation_loader.dataset.unique_labels
+		class_names = validation_loader.dataset.dataset.classes
 	except AttributeError:
 		try:
-			class_names = validation_loader.dataset.dataset.classes
-		except:
+			class_names = validation_loader.dataset.unique_labels
+		except AttributeError:
 			class_names = train_loader.dataset.unique_labels
-	
+
 	num_classes = len(class_names)
 
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_multi_label', '', mode)
-	
+
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
-	
+
 	if verbose:
 		print(f"\n{mode.upper()} [Multi-Label]")
 		print(f"   ├─ {dataset_name}")
-		print(f"   ├─ train: {len(train_loader.dataset)} samples")
-		print(f"   ├─ val: {len(validation_loader.dataset)} samples")
-		print(f"   ├─ {model_name} {model_arch}")
-		print(f"   ├─ {tip_adapter_method}")
-		print(f"   ├─ Beta[init]: {initial_beta}")
-		print(f"   ├─ Alpha[init]: {initial_alpha}")
-		print(f"   ├─ Batch size : {train_loader.batch_size}")
-		print(f"   ├─ Device     : {type(device)} {device}")
-		print(f"   ├─ Temperature: {temperature}")
-		print(f"   ├─ Loss Weights: {loss_weights}")
-		print(f"   ├─ Support Shots: {support_shots}")
-	
-	if torch.cuda.is_available():
+		print(f"   ├─ train: {len(train_loader.dataset):,} samples | val: {len(validation_loader.dataset):,} samples")
+		print(f"   ├─ {model_name} {model_arch} | {tip_adapter_method}")
+		print(f"   ├─ Beta[init]: {initial_beta} | Alpha[init]: {initial_alpha} | Support Shots: {support_shots}")
+		print(f"   ├─ Batch size: {train_loader.batch_size} | Temperature: {temperature} | Loss Weights: {loss_weights}")
+		print(f"   ├─ Device    : {type(device)} {device}")
+
+	amp_dtype = torch.float32
+	if torch.cuda.is_available() and device.type == "cuda":
 		gpu_name = torch.cuda.get_device_name(device)
 		gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 		cuda_capability = torch.cuda.get_device_capability()
@@ -5817,162 +5832,12 @@ def tip_adapter_finetune_multi_label(
 			amp_dtype = torch.float16
 		if verbose:
 			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
-	
-	# === EXTRACT SUPPORT FEATURES ON THE FLY (Fixes System RAM OOM) ===
-	if verbose:
-		print("-"*100)
-		print(f"[ON-THE-FLY FEATURE EXTRACTION] support set with up to {support_shots} shots per class and extracting features")
-	
-	class_to_feats = defaultdict(list)
-	class_to_lbls = defaultdict(list)
-	
-	with torch.no_grad():
-		model.eval()
-		for images, _, label_vectors in train_loader:
-			images = images.to(device, non_blocking=True)
-			label_vectors = label_vectors.to(device, non_blocking=True)
-			
-			# Half-precision inference for speed + lower VRAM
-			with torch.amp.autocast(
-				device_type=device.type,
-				enabled=torch.cuda.is_available(),
-				dtype=amp_dtype,
-			):
-				batch_features = model.encode_image(images)
 
-			# Cast to FP32 *before* normalize+store: cache keeps full precision
-			batch_features = torch.nn.functional.normalize(batch_features.float(), dim=-1).cpu() 
-			label_vectors_cpu = label_vectors.cpu()
-			
-			# Distribute features to classes
-			for feat, lbl in zip(batch_features, label_vectors_cpu):
-				active_classes = torch.where(lbl > 0)[0].tolist()
-				for class_idx in active_classes:
-					if len(class_to_feats[class_idx]) < support_shots:
-						class_to_feats[class_idx].append(feat)
-						class_to_lbls[class_idx].append(lbl)
-			
-			# Stop early if all classes have enough shots
-			if len(class_to_feats) == num_classes and all(len(v) >= support_shots for v in class_to_feats.values()):
-				if verbose:
-					print(f"All classes have {support_shots} shots => early stopping")
-				break
-
-	# Flatten the support set
-	support_features_list = []
-	support_label_vectors_list = []
-	missing_classes = []
-	
-	# Determine placeholder shapes safely
-	if class_to_feats:
-		_sample_feat_shape = next(iter(class_to_feats.values()))[0].shape
-		_sample_lbl_shape = next(iter(class_to_lbls.values()))[0].shape
-	else:
-		# Fallback if dataset is completely empty or no labels > 0 were found
-		_sample_feat_shape = (1024,) 
-		_sample_lbl_shape = (num_classes,)
-
-	for class_idx in range(num_classes):
-		if class_idx in class_to_feats and len(class_to_feats[class_idx]) > 0:
-			# FIX: Use ALL collected shots for this class (Standard Tip-Adapter behavior)
-			# Original code only took [0], which defeated the purpose of support_shots > 1.
-			support_features_list.extend(class_to_feats[class_idx])
-			support_label_vectors_list.extend(class_to_lbls[class_idx])
-		else:
-			missing_classes.append(class_idx)
-			support_features_list.append(torch.zeros(_sample_feat_shape))
-			support_label_vectors_list.append(torch.zeros(_sample_lbl_shape))
-
-	if missing_classes and verbose:
-		print(
-			f"[WARNING] {len(missing_classes)} labels with no training samples "
-			f"=> zero-padded: {missing_classes[:10]}{'...' if len(missing_classes) > 10 else ''}"
-		)
-
-	support_features = torch.stack(support_features_list).to(device)
-	support_label_vectors = torch.stack(support_label_vectors_list).to(device)
-	
-	if verbose:
-		print(f"Support set size: {len(support_features)} samples (Total cache entries)")
-		print(f"Support features shape: {support_features.shape}")
-		print(f"Support label vectors shape: {support_label_vectors.shape}")
-		print("-"*100)
-	
-	all_class_embeds = get_text_embeddings(
-		model=model,
-		loader=validation_loader,
-		dtype=amp_dtype,
-		verbose=verbose,
-	)
-
-	model = get_adapter_peft_clip(
-		clip_model=model,
-		method=tip_adapter_method,
-		initial_beta=initial_beta,
-		initial_alpha=initial_alpha,
-		verbose=verbose,
-	).to(device)
-	
-	print("=== Full parameter inventory ===")
-	for name, param in model.named_parameters():
-		print(f"  {name}: numel={param.numel()} requires_grad={param.requires_grad}")
-	print("=== End of parameter inventory ===")
-	
-	# Access the adapter module from the visual encoder
-	adapter_module = getattr(model.visual, f"{tip_adapter_method.replace('-', '_')}_proj", None)
-
-	if adapter_module is None:
-		# Print available attributes to help debug
-		visual_attrs = [a for a in dir(model.visual) if not a.startswith('_')]
-		raise ValueError(
-			f"Could not find Tip-Adapter module. "
-			f"Available model.visual attributes: {visual_attrs}"
-		)
-
-	# For multi-label, we set the cache with label vectors instead of single labels
-	adapter_module.set_cache(
-		support_features=support_features,
-		support_labels=support_label_vectors,  # Multi-label vectors
-		text_features=all_class_embeds
-	)
-	
-	if verbose:
-		cache_stats = adapter_module.get_memory_footprint()
-		print(f"\n[CACHE] {tip_adapter_method}:")
-		print(f"  ├─ size: {cache_stats.get('cache_size', 0)} samples")
-		print(f"  ├─ memory: {cache_stats.get('cache_memory_mb', 0):.4f} MB")
-		print(f"  └─ Total memory: {cache_stats.get('total_memory_mb', 0):.4f} MB")
-	
-	# DEBUG: Check which parameters are trainable
-	if verbose:
-		trainable_params = []
-		frozen_params = []
-		for name, param in model.named_parameters():
-			if param.requires_grad:
-				trainable_params.append((name, param.numel()))
-			else:
-				frozen_params.append((name, param.numel()))
-		
-		print(f"\n[{tip_adapter_method} Parameters] Trainable: {len(trainable_params)} Frozen: {len(frozen_params)}")
-		
-		if trainable_params:
-			print("Trainable parameters:")
-			for name, numel in trainable_params[:10]:
-				print(f"  {name}: {numel} params")
-			if len(trainable_params) > 10:
-				print(f"  ... and {len(trainable_params) - 10} more")
-		
-		total_trainable = sum(numel for _, numel in trainable_params)
-		total_frozen = sum(numel for _, numel in frozen_params)
-		print(f"[TOTAL] Trainable: {total_trainable:,} Frozen: {total_frozen:,}")
-	
-	get_parameters_info(model=model, mode=tip_adapter_method, verbose=verbose)
-	get_parameters_info_orig(model=model, mode=tip_adapter_method)
-
+	# 1. Compute loss masks first (so we know active classes & pos_weight)
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		pw_mode=pw_mode,#"log",
+		pw_mode=pw_mode,
 		device=device,
 		verbose=verbose,
 	)
@@ -5980,100 +5845,235 @@ def tip_adapter_finetune_multi_label(
 	active_mask = masks["active_mask"]
 	head_mask   = masks["head_mask"]
 	rare_mask   = masks["rare_mask"]
-	N = masks["N"]
-	train_freq = masks["train_freq"]
+	N           = masks["N"]
+	train_freq  = masks["train_freq"]
 
-	# Criteria
-	# I2T: pos_weight applies — rows are images, cols are classes
-	criterion_i2t = torch.nn.BCEWithLogitsLoss(
-		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
-		reduction='none',
-	)
+	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none')
 	if verbose:
-		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,}")
-		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
-		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+		print(f"\n[I2T] {criterion_i2t.__class__.__name__} pos_weight range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}] | active={active_mask.sum().item():,}")
+		print(f"[T2I] {criterion_t2i.__class__.__name__} (no pos_weight)")
 
-	# T2I: no pos_weight — rows are classes, cols are batch images
-	# The imbalance is already corrected via I2T; T2I provides directional symmetry
-	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none',)
+	# 2. Pre-extract frozen CLIP visual features ONCE for train & val (entire visual encoder is frozen!)
 	if verbose:
-		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
-		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+		print("-" * 100)
+		print("[FROZEN FEATURE EXTRACTION] Extracting L2-normalized CLIP visual features once for train & val...")
 
-	# For training-free Tip-Adapter, we may only optimize beta and alpha
-	# For Tip-Adapter-F, we also optimize the linear projection
-	trainable_parameters = [p for p in model.parameters() if p.requires_grad]
-	
-	if not trainable_parameters:
-		if tip_adapter_method == "tip_adapter":
-			# Training-free version - no training needed
-			if verbose:
-				print("[Tip-Adapter] Training-free mode - skipping optimization setup")
-			num_epochs = 0  # No training epochs needed
-		else:
-			raise ValueError("No trainable parameters found in the model. Check your setup.")
-	
-	# Setup optimizer only if we have trainable parameters
-	if trainable_parameters and num_epochs > 0:
-		optimizer = torch.optim.AdamW(
-			params=trainable_parameters,
-			lr=learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-6,
-			weight_decay=weight_decay,
-		)
-		if verbose:
-			print(f"\n{optimizer.__class__.__name__} optimizer")
-			print(f"  ├─ Params: {sum(p.numel() for p in trainable_parameters):,}")
-			print(f"  ├─ LR: {learning_rate}")
-			print(f"  ├─ Betas: {optimizer.defaults['betas']}")
-			print(f"  ├─ Eps: {optimizer.defaults['eps']}")
-			print(f"  └─ Weight Decay: {weight_decay}")
+	model.eval()
+	def _extract_frozen_features(loader, desc: str) -> Tuple[torch.Tensor, torch.Tensor]:
+		feats_chunks, lbls_chunks = [], []
+		with torch.no_grad(), torch.amp.autocast(
+			device_type=device.type,
+			enabled=torch.cuda.is_available() and device.type == "cuda",
+			dtype=amp_dtype,
+		):
+			for images, _, label_vectors in tqdm(loader, desc=desc, disable=not verbose):
+				images = images.to(device, non_blocking=True)
+				emb = model.encode_image(images).float()
+				emb = torch.nn.functional.normalize(emb, dim=-1)
+				feats_chunks.append(emb.cpu())
+				lbls_chunks.append(label_vectors.cpu())
+		return torch.cat(feats_chunks, dim=0), torch.cat(lbls_chunks, dim=0)
 
-		# Scheduler
-		# approximate T_max: N epochs * minimum_epochs
-		estimated_epochs = 2 * minimum_epochs
-		T_max = estimated_epochs * len(train_loader)
-		ANNEALING_RATIO = 1e-2 # 1% of initial LR
-		eta_min = learning_rate * ANNEALING_RATIO
-		scheduler = build_cosine_scheduler(
-			optimizer=optimizer,
-			T_max=T_max,
-			floor=ANNEALING_RATIO,
-		)
-		
-		if verbose:
-			print(f"\n{scheduler.__class__.__name__}")
-			print(f"  ├─ minimum_epochs = {minimum_epochs}")
-			print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
-			print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-			print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
+	train_feats, train_lbls = _extract_frozen_features(train_loader, "Tip-Adapter train features")
+	val_feats, val_lbls = _extract_frozen_features(validation_loader, "Tip-Adapter val features")
+
+	# 3. Build DEDUPLICATED multi-label support cache (rare-first greedy selection)
+	# Sort training samples by the minimum training frequency of their active labels (rarest first)
+	# so rare classes always secure their shots cleanly, and each unique image enters the cache AT MOST ONCE.
+	n_train_samples = train_feats.shape[0]
+	train_freq_cpu = train_freq.cpu()
+	sample_min_freq = torch.full((n_train_samples,), float('inf'), dtype=torch.float32)
+	for idx in range(n_train_samples):
+		active_c = torch.where(train_lbls[idx] > 0)[0]
+		if active_c.numel() > 0:
+			sample_min_freq[idx] = train_freq_cpu[active_c].min()
+
+	# Deterministic order: rarest-label samples first
+	ordered_indices = torch.argsort(sample_min_freq, stable=True).tolist()
+	class_shot_counts = torch.zeros(num_classes, dtype=torch.long)
+	selected_indices = []
+	n_active_total = int((train_freq_cpu > 0).sum().item())
+
+	for idx in ordered_indices:
+		active_c = torch.where(train_lbls[idx] > 0)[0]
+		if active_c.numel() == 0:
+			continue
+		if (class_shot_counts[active_c] < support_shots).any():
+			selected_indices.append(idx)
+			class_shot_counts[active_c] += 1
+			if int((class_shot_counts >= support_shots).sum().item()) >= n_active_total:
+				break
+
+	if selected_indices:
+		sel_idx_tensor = torch.tensor(selected_indices, dtype=torch.long)
+		support_features = train_feats[sel_idx_tensor].clone().to(device)
+		support_label_vectors = train_lbls[sel_idx_tensor].clone().to(device)
 	else:
-		optimizer = None
-		scheduler = None
-		if verbose:
-			print("\n[Tip-Adapter] No optimizer needed (training-free mode)")
-	
-	scaler = torch.amp.GradScaler(
-		device=device,
-		init_scale=2**15,      # 2048 (Conservative start)
-		growth_factor=2.0,     # Smoother growth than default 2.0
-		backoff_factor=0.5,    # Standard
-		growth_interval=2000,  # Keep scale stable longer
+		feat_dim = train_feats.shape[1]
+		support_features = torch.empty(0, feat_dim, device=device, dtype=torch.float32)
+		support_label_vectors = torch.empty(0, num_classes, device=device, dtype=torch.float32)
+
+	covered_classes = int((class_shot_counts > 0).sum().item())
+	if verbose:
+		print(f"[DEDUPLICATED SUPPORT CACHE]")
+		print(f"   ├─ Unique cached images : {support_features.shape[0]:,} / {n_train_samples:,} train samples")
+		print(f"   ├─ Covered classes      : {covered_classes:,} / {n_active_total:,} active ({num_classes:,} total)")
+		print(f"   ├─ Support features     : {tuple(support_features.shape)} ({support_features.dtype})")
+		print(f"   └─ Support labels       : {tuple(support_label_vectors.shape)} ({support_label_vectors.dtype})")
+		print("-" * 100)
+
+	# 4. Pre-encode frozen class text embeddings [C, D] in FP32
+	all_class_embeds = get_text_embeddings(
+		model=model,
+		loader=validation_loader,
+		dtype=amp_dtype,
+		verbose=verbose,
+	)
+
+	# 5. Attach faithful logit-space Tip-Adapter / Tip-Adapter-F head to frozen CLIP
+	model = get_adapter_peft_clip(
+		clip_model=model,
+		method=tip_adapter_method,
+		initial_beta=initial_beta,
+		initial_alpha=initial_alpha,
+		verbose=verbose,
+	).to(device)
+
+	adapter_module = model.tip_adapter
+	adapter_module.set_cache(
+		support_features=support_features,
+		support_labels=support_label_vectors,
+		text_features=all_class_embeds,
+		normalize_by_class_count=True,
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
-		scaler_state = scaler.state_dict()
-		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
-		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
-		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
-		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
-		print()
+		cache_stats = adapter_module.get_memory_footprint()
+		print(f"\n[CACHE] {tip_adapter_method}:")
+		print(f"  ├─ Unique cache entries : {cache_stats.get('cache_size', 0):,}")
+		print(f"  ├─ Trainable key params : {cache_stats.get('trainable_params', 0):,}")
+		print(f"  ├─ Cache memory         : {cache_stats.get('cache_memory_mb', 0):.4f} MB")
+		print(f"  └─ Total head memory    : {cache_stats.get('total_memory_mb', 0):.4f} MB")
+
+	get_parameters_info(model=model, mode=tip_adapter_method, verbose=verbose)
+	get_parameters_info_orig(model=model, mode=tip_adapter_method)
+
+	# Feature dataloaders for fast FP32 training & validation
+	train_feature_loader = torch.utils.data.DataLoader(
+		torch.utils.data.TensorDataset(train_feats, train_lbls),
+		batch_size=train_loader.batch_size,
+		shuffle=True,
+		num_workers=0,
+	)
+	val_feature_loader = torch.utils.data.DataLoader(
+		torch.utils.data.TensorDataset(val_feats, val_lbls),
+		batch_size=validation_loader.batch_size,
+		shuffle=False,
+		num_workers=0,
+	)
+
+	@torch.no_grad()
+	def _compute_tip_val_loss(alpha_override: Optional[float] = None, beta_override: Optional[float] = None) -> float:
+		adapter_module.eval()
+		max_batches = max(50, len(val_feature_loader) // 10)
+		total_loss = 0.0
+		total_samples = 0
+		for bidx, (v_feats, v_lbls) in enumerate(val_feature_loader):
+			if bidx >= max_batches:
+				break
+			bs = v_feats.size(0)
+			if bs == 0:
+				continue
+			v_feats = v_feats.to(device, non_blocking=True).float()
+			v_lbls = v_lbls.to(device, non_blocking=True).float()
+			tip_logits = adapter_module(
+				v_feats,
+				temperature=temperature,
+				alpha=alpha_override,
+				beta=beta_override,
+			)
+			batch_loss, _, _ = compute_multilabel_logit_loss(
+				logits=tip_logits,
+				label_vectors=v_lbls,
+				criterion_i2t=criterion_i2t,
+				criterion_t2i=criterion_t2i,
+				active_mask=active_mask,
+				loss_weights=loss_weights,
+			)
+			total_loss += batch_loss.item() * bs
+			total_samples += bs
+		return total_loss / total_samples if total_samples > 0 else 0.0
+
+	@torch.no_grad()
+	def _grid_search_alpha_beta() -> Tuple[float, float, float]:
+		"""
+		Validation grid search over (alpha, beta) per Zhang et al. (ECCV 2022, Sec. 4.1).
+		Precomputes clip_logits once and cache_logits once per beta across the validation slice.
+		"""
+		adapter_module.eval()
+		max_batches = max(50, len(val_feature_loader) // 10)
+		alpha_grid = sorted({float(initial_alpha), 0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0})
+		beta_grid = sorted({float(initial_beta), 1.0, 2.0, 3.5, 5.5, 8.0, 12.0, 20.0})
+
+		# Gather validation slice batches once
+		val_batches = []
+		for bidx, (v_feats, v_lbls) in enumerate(val_feature_loader):
+			if bidx >= max_batches:
+				break
+			if v_feats.size(0) == 0:
+				continue
+			vf_gpu = v_feats.to(device, non_blocking=True).float()
+			vl_gpu = v_lbls.to(device, non_blocking=True).float()
+			c_logits = adapter_module.compute_clip_logits(vf_gpu, temperature=temperature)
+			val_batches.append((vf_gpu, vl_gpu, c_logits))
+
+		best_loss = float('inf')
+		best_alpha = float(adapter_module.alpha.item())
+		best_beta = float(adapter_module.beta.item())
+
+		for b_val in beta_grid:
+			# Compute cache_logits once per beta across all validation batches
+			cache_logits_list = [
+				adapter_module.compute_cache_logits(vf_gpu, beta=b_val)
+				for vf_gpu, _, _ in val_batches
+			]
+			for a_val in alpha_grid:
+				tot_l = 0.0
+				tot_n = 0
+				for (_, vl_gpu, c_logits), cache_l in zip(val_batches, cache_logits_list):
+					bs = vl_gpu.size(0)
+					t_logits = c_logits + a_val * cache_l
+					bl, _, _ = compute_multilabel_logit_loss(
+						logits=t_logits,
+						label_vectors=vl_gpu,
+						criterion_i2t=criterion_i2t,
+						criterion_t2i=criterion_t2i,
+						active_mask=active_mask,
+						loss_weights=loss_weights,
+					)
+					tot_l += bl.item() * bs
+					tot_n += bs
+				avg_l = tot_l / tot_n if tot_n > 0 else float('inf')
+				if avg_l < best_loss:
+					best_loss = avg_l
+					best_alpha = a_val
+					best_beta = b_val
+
+		if verbose:
+			print(
+				f"[GRID SEARCH] Searched {len(beta_grid)} β × {len(alpha_grid)} α = {len(beta_grid)*len(alpha_grid)} configs "
+				f"→ best α={best_alpha}, β={best_beta} (val_loss={best_loss:.6f})"
+			)
+		return best_alpha, best_beta, best_loss
+
+	# Trainable parameters: empty for training-free tip_adapter; [cache_keys] for tip_adapter_f
+	trainable_parameters = [p for p in model.parameters() if p.requires_grad]
+
+	if tip_adapter_method == "tip_adapter":
+		num_epochs = 0
+	elif not trainable_parameters:
+		raise ValueError("Tip-Adapter-F has no trainable cache_keys. Check support set construction and set_cache().")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -6097,9 +6097,127 @@ def tip_adapter_finetune_multi_label(
 		f"pit_{pairwise_imp_threshold:.1e}"
 		f".pth"
 	)
-	
-	training_losses = list()
-	validation_losses = list()
+
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
+
+	# ─────────────────────────────────────────────────────────────────────────
+	# BRANCH A: Training-Free Tip-Adapter (Zhang et al., ECCV 2022, Sec. 3.1)
+	# ─────────────────────────────────────────────────────────────────────────
+	if num_epochs == 0 or not trainable_parameters:
+		if verbose:
+			print(f"\n[{tip_adapter_method}] Training-free mode — running validation grid search over (α, β)...")
+
+		best_alpha, best_beta, best_val_loss = _grid_search_alpha_beta()
+		adapter_module.set_alpha_beta(best_alpha, best_beta)
+		actual_trained_epochs = 0
+
+		# Save checkpoint so downstream inference can load the tuned Tip-Adapter cache
+		torch.save(
+			{
+				"epoch": 0,
+				"model_state_dict": {k: v.cpu() for k, v in model.state_dict().items()},
+				"best_val_loss": best_val_loss,
+				"alpha": best_alpha,
+				"beta": best_beta,
+			},
+			mdl_fpth,
+		)
+		if verbose:
+			print(f"[{tip_adapter_method}] Saved training-free cache checkpoint → {mdl_fpth}")
+
+		best_model_eval_results = evaluate_best_model(
+			model=model,
+			validation_loader=validation_loader,
+			active_mask=active_mask,
+			head_mask=head_mask,
+			rare_mask=rare_mask,
+			early_stopping=None,
+			checkpoint_path=mdl_fpth,
+			finetune_strategy=tip_adapter_method,
+			device=device,
+			cache_dir=results_dir,
+			embeddings_cache=(val_feats, None),
+			topk_values=topk_values,
+			temperature=temperature,
+			use_tip_logits=True,
+			use_fixed_masks=True,
+			tier_spec_path=tier_spec_path,
+			verbose=verbose,
+		)
+
+		print_final_evaluation_summary(
+			mode=mode,
+			method=tip_adapter_method,
+			model_arch=model_arch,
+			model=model,
+			actual_trained_epochs=actual_trained_epochs,
+			early_stopping=None,
+			mdl_fpth=mdl_fpth,
+			pw_mode=pw_mode,
+			eval_results=best_model_eval_results,
+			extra_lines=[
+				f"Tip-Adapter (Training-Free): M={adapter_module.cache_keys.shape[0]:,} unique cache keys | "
+				f"grid-searched α={best_alpha}, β={best_beta}, val_loss={best_val_loss:.6f}",
+			],
+			verbose=verbose,
+		)
+
+		file_base_name = (
+			f"{tip_adapter_method}_"
+			f"{model_arch}_"
+			f"training_free_"
+			f"bs_{train_loader.batch_size}_"
+			f"beta_{best_beta}_"
+			f"alpha_{best_alpha}_"
+			f"shots_{support_shots}_"
+			f"temp_{temperature}"
+		)
+		viz.plot_retrieval_metrics_best_model(
+			dataset_name=dataset_name,
+			image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+			text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
+			fname=os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		)
+		return best_model_eval_results
+
+	# ─────────────────────────────────────────────────────────────────────────
+	# BRANCH B: Tip-Adapter-F (Fine-Tuned Cache Keys — Zhang et al., ECCV 2022, Sec. 3.2)
+	# ─────────────────────────────────────────────────────────────────────────
+	optimizer = torch.optim.AdamW(
+		params=trainable_parameters,
+		lr=learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=weight_decay,
+	)
+	if verbose:
+		print(f"\n{optimizer.__class__.__name__} optimizer (Tip-Adapter-F cache keys only)")
+		print(f"  ├─ Params: {sum(p.numel() for p in trainable_parameters):,}")
+		print(f"  ├─ LR: {learning_rate}")
+		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+		print(f"  └─ Weight Decay: {weight_decay}")
+
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_feature_loader)
+	ANNEALING_RATIO = 1e-2
+	eta_min = learning_rate * ANNEALING_RATIO
+	scheduler = build_cosine_scheduler(
+		optimizer=optimizer,
+		T_max=T_max,
+		floor=ANNEALING_RATIO,
+	)
+	if verbose:
+		print(f"\n{scheduler.__class__.__name__}")
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_feature_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
+
+	# Tip-Adapter-F head trains cleanly in pure FP32 (no GradScaler needed)
+	training_losses = []
+	validation_losses = []
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
@@ -6109,142 +6227,66 @@ def tip_adapter_finetune_multi_label(
 	alphas = []
 	betas = []
 	train_start_time = time.time()
-	
-	# If training-free, skip training loop
-	if num_epochs == 0 or not trainable_parameters:
-		if verbose:
-			print(f"\n[{tip_adapter_method}] Training-free mode - proceeding directly to evaluation")
-		
-		best_model_eval_results = evaluate_best_model(
-			model=model,
-			validation_loader=validation_loader,
-			active_mask=active_mask,
-			head_mask=head_mask,
-			rare_mask=rare_mask,
-			early_stopping=None,
-			checkpoint_path=None,
-			finetune_strategy=tip_adapter_method,
-			device=device,
-			cache_dir=results_dir,
-			topk_values=topk_values,
-			temperature=temperature,
-			use_fixed_masks=True,
-			tier_spec_path=tier_spec_path,
-			verbose=verbose,
-		)
-		
-		print_final_evaluation_summary(
-			mode=mode,
-			method=tip_adapter_method,
-			model_arch=model_arch,
-			model=model,
-			actual_trained_epochs=actual_trained_epochs,
-			early_stopping=early_stopping,
-			mdl_fpth=mdl_fpth,
-			pw_mode=pw_mode,
-			eval_results=best_model_eval_results,
-			verbose=verbose,
-		)
 
-		# Generate best model plot only
-		file_base_name = (
-			f"{tip_adapter_method}_"
-			f"{model_arch}_"
-			f"training_free_"
-			f"bs_{train_loader.batch_size}_"
-			f"beta_{initial_beta}_"
-			f"alpha_{initial_alpha}_"
-			f"shots_{support_shots}_"
-			f"temp_{temperature}"
-		)
-		
-		viz.plot_retrieval_metrics_best_model(
-			dataset_name=dataset_name,
-			image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
-			text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
-			fname=os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		)
-		
-		return best_model_eval_results
-	
-	# Training loop (for Tip-Adapter-F or trainable beta/alpha)
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
-		model.train()
+		model.eval()          # Keep frozen CLIP backbone in eval mode
+		adapter_module.train()
 		print(f"Epoch [{epoch + 1}/{num_epochs}]")
-		
+
 		epoch_loss_total = 0.0
 		epoch_loss_i2t = 0.0
 		epoch_loss_t2i = 0.0
 		num_batches = 0
 
-		for bidx, (images, _, label_vectors) in enumerate(train_loader):
+		for bidx, (batch_feats, label_vectors) in enumerate(train_feature_loader):
 			optimizer.zero_grad(set_to_none=True)
-			images = images.to(device, non_blocking=True)
+			batch_feats = batch_feats.to(device, non_blocking=True).float()
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
-			
-			with torch.amp.autocast(
-				device_type=device.type, 
-				enabled=torch.cuda.is_available(),
-				dtype=amp_dtype,
-			):
-				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
-					model=model,
-					images=images,
-					all_class_embeds=all_class_embeds,
-					label_vectors=label_vectors,
-					criterion_i2t=criterion_i2t,
-					criterion_t2i=criterion_t2i,
-					active_mask=active_mask,
-					temperature=temperature,
-					loss_weights=loss_weights,
-					verbose=verbose,
-				)
 
-			# Check for NaN loss
+			tip_logits = adapter_module(batch_feats, temperature=temperature)
+			total_loss, loss_i2t, loss_t2i = compute_multilabel_logit_loss(
+				logits=tip_logits,
+				label_vectors=label_vectors,
+				criterion_i2t=criterion_i2t,
+				criterion_t2i=criterion_t2i,
+				active_mask=active_mask,
+				loss_weights=loss_weights,
+			)
+
 			if torch.isnan(total_loss) or torch.isinf(total_loss):
 				print(
 					f"[WARNING] e{epoch+1} b{bidx+1}: "
-					f"total_loss: {total_loss} "
-					f"loss_i2t: {loss_i2t} "
-					f"loss_t2i: {loss_t2i}"
+					f"total_loss: {total_loss} loss_i2t: {loss_i2t} loss_t2i: {loss_t2i}"
 				)
-				# no zero_grad needed here — already done above
-				continue # skip this batch
+				continue
 
-			scaler.scale(total_loss).backward()
-			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_(
-				[p for p in model.parameters() if p.requires_grad], 
-				max_norm=1.0
-			)
-			scaler.step(optimizer)
-			scaler.update()
+			total_loss.backward()
+			torch.nn.utils.clip_grad_norm_(trainable_parameters, max_norm=1.0)
+			optimizer.step()
 			scheduler.step()
 
-			# Track losses
 			batch_loss_total = total_loss.item()
 			batch_loss_i2t = loss_i2t.item()
 			batch_loss_t2i = loss_t2i.item()
-			
+
 			epoch_loss_total += batch_loss_total
 			epoch_loss_i2t += batch_loss_i2t
 			epoch_loss_t2i += batch_loss_t2i
 			num_batches += 1
-			
-			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+
+			if bidx % print_every == 0 or bidx + 1 == len(train_feature_loader):
 				print(
-					f"\tBatch[{bidx + 1:6d}/{len(train_loader)}] "
+					f"\tBatch[{bidx + 1:6d}/{len(train_feature_loader)}] "
 					f"[LOSS] Total: {batch_loss_total:.6f} "
 					f"(I2T: {batch_loss_i2t:.6f} T2I: {batch_loss_t2i:.6f})"
 				)
 
-		# Calculate average losses
 		avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
 		avg_i2t_loss = epoch_loss_i2t / num_batches if num_batches > 0 else 0.0
 		avg_t2i_loss = epoch_loss_t2i / num_batches if num_batches > 0 else 0.0
-		
+
 		training_losses.append(avg_total_loss)
 		training_losses_breakdown["total"].append(avg_total_loss)
 		training_losses_breakdown["i2t"].append(avg_i2t_loss)
@@ -6255,17 +6297,7 @@ def tip_adapter_finetune_multi_label(
 
 		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")
 
-		current_val_loss = compute_multilabel_validation_loss(
-			model=model,
-			validation_loader=validation_loader,
-			criterion_i2t=criterion_i2t,
-			criterion_t2i=criterion_t2i,
-			active_mask=active_mask,
-			device=device,
-			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
-			temperature=temperature,
-			verbose=verbose,
-		)
+		current_val_loss = _compute_tip_val_loss()
 		validation_losses.append(current_val_loss)
 
 		validation_results = get_validation_metrics(
@@ -6275,25 +6307,27 @@ def tip_adapter_finetune_multi_label(
 			topK_values=topk_values,
 			finetune_strategy=tip_adapter_method,
 			cache_dir=results_dir,
+			embeddings_cache=(val_feats, None),
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
+			use_tip_logits=True,
 			verbose=verbose,
 		)
-		
+
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
 		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity")
-		align_score   = full_val_loss_acc_metrics_per_epoch.get("alignment_score")
-		
+		align_score = full_val_loss_acc_metrics_per_epoch.get("alignment_score")
+
 		retrieval_metrics_per_epoch = {
 			"img2txt": validation_results["img2txt_metrics"],
-			"txt2img": validation_results["txt2img_metrics"]
+			"txt2img": validation_results["txt2img_metrics"],
 		}
 
 		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
 		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
-		
+
 		print(
 			f'\nEpoch {epoch+1}:\n'
 			f'   ├─ [LOSS] {tip_adapter_method.upper()}: Train - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Val: {current_val_loss:.6f}\n'
@@ -6308,7 +6342,7 @@ def tip_adapter_finetune_multi_label(
 			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
 		else:
 			print(f'   ├─ Embed — AlignScore: N/A')
-		
+
 		print(f"   ├─ Retrieval Metrics:")
 		print(
 			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
@@ -6329,7 +6363,6 @@ def tip_adapter_finetune_multi_label(
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 
 		# Training health check
-		# Run after epoch 1 and at mid-warmup — all signals now available
 		if epoch in {0, minimum_epochs // 2}:
 			should_abort = check_training_health(
 				model=model,
@@ -6346,7 +6379,6 @@ def tip_adapter_finetune_multi_label(
 				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
 				break
 
-
 		# Early stopping check
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -6358,24 +6390,38 @@ def tip_adapter_finetune_multi_label(
 		):
 			print(
 				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
-				f"@ epoch {early_stopping.get_best_epoch()+1}")
+				f"@ epoch {early_stopping.get_best_epoch()+1}"
+			)
 			break
-		
-		# # Cache stats
-		# if hasattr(train_loader.dataset, 'get_cache_stats'):
-		# 	cache_stats = train_loader.dataset.get_cache_stats()
-		# 	if cache_stats is not None:
-		# 		print(f"Train Cache: {cache_stats}")
-		
-		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
-		# 	cache_stats = validation_loader.dataset.get_cache_stats()
-		# 	if cache_stats is not None:
-		# 		print(f"Validation Cache: {cache_stats}")
-		
+
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
-	
+
 	print(f"[{tip_adapter_method}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
-	
+
+	# Post-training (alpha, beta) validation grid search on best trained cache keys (Zhang et al., ECCV 2022, Sec. 3.2)
+	if os.path.exists(mdl_fpth):
+		ckpt = torch.load(mdl_fpth, map_location=device)
+		model.load_state_dict(ckpt["model_state_dict"], strict=True)
+		pre_search_loss = _compute_tip_val_loss()
+		gs_alpha, gs_beta, gs_loss = _grid_search_alpha_beta()
+		if gs_loss < pre_search_loss - 1e-6:
+			adapter_module.set_alpha_beta(gs_alpha, gs_beta)
+			ckpt["model_state_dict"] = {k: v.cpu() for k, v in model.state_dict().items()}
+			ckpt["best_val_loss"] = gs_loss
+			ckpt["alpha"] = gs_alpha
+			ckpt["beta"] = gs_beta
+			torch.save(ckpt, mdl_fpth)
+			if verbose:
+				print(
+					f"[{tip_adapter_method}] Post-training grid search improved val_loss "
+					f"{pre_search_loss:.6f} → {gs_loss:.6f} (α={gs_alpha}, β={gs_beta}); updated checkpoint."
+				)
+		elif verbose:
+			print(
+				f"[{tip_adapter_method}] Keeping initial α={adapter_module.alpha.item():.4f}, "
+				f"β={adapter_module.beta.item():.4f} (val_loss={pre_search_loss:.6f})."
+			)
+
 	best_model_eval_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -6383,24 +6429,25 @@ def tip_adapter_finetune_multi_label(
 		head_mask=head_mask,
 		rare_mask=rare_mask,
 		early_stopping=early_stopping,
-		checkpoint_path=mdl_fpth if num_epochs > 0 else None,
+		checkpoint_path=mdl_fpth,
 		finetune_strategy=tip_adapter_method,
 		device=device,
 		cache_dir=results_dir,
+		embeddings_cache=(val_feats, None),
 		topk_values=topk_values,
 		lora_params=None,
 		temperature=temperature,
+		use_tip_logits=True,
 		use_fixed_masks=True,
 		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
-	
-	actual_trained_epochs = len(training_losses) if training_losses else 0
-	if num_epochs > 0:
-		mdl_fpth = get_updated_model_name(
-			original_path=mdl_fpth, 
-			actual_epochs=actual_trained_epochs
-		)
+
+	actual_trained_epochs = len(training_losses)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth,
+		actual_epochs=actual_trained_epochs,
+	)
 
 	print_final_evaluation_summary(
 		mode=mode,
@@ -6412,6 +6459,10 @@ def tip_adapter_finetune_multi_label(
 		mdl_fpth=mdl_fpth,
 		pw_mode=pw_mode,
 		eval_results=best_model_eval_results,
+		extra_lines=[
+			f"Tip-Adapter-F: M={adapter_module.cache_keys.shape[0]:,} trainable cache keys | "
+			f"final α={adapter_module.alpha.item():.4f}, β={adapter_module.beta.item():.4f}",
+		],
 		verbose=verbose,
 	)
 
@@ -6423,41 +6474,32 @@ def tip_adapter_finetune_multi_label(
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"beta_{initial_beta}_"
-		f"alpha_{initial_alpha}_"
+		f"beta_{adapter_module.beta.item()}_"
+		f"alpha_{adapter_module.alpha.item()}_"
 		f"shots_{support_shots}_"
 		f"temp_{temperature}"
 	)
-	
-	viz_dir = os.path.join(results_dir, "viz")
-	os.makedirs(viz_dir, exist_ok=True)
+
 	plot_paths = {
 		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
 		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
-	
+
 	if actual_trained_epochs > 0:
-		# Plot loss breakdown (I2T vs T2I)
 		viz.plot_multilabel_loss_breakdown(
 			training_losses_breakdown=training_losses_breakdown,
 			filepath=plot_paths["losses_breakdown"],
 		)
-		
 		viz.plot_retrieval_metrics_per_epoch(
 			dataset_name=dataset_name,
 			image_to_text_metrics_list=img2txt_metrics_all_epochs,
 			text_to_image_metrics_list=txt2img_metrics_all_epochs,
 			fname=plot_paths["retrieval_per_epoch"],
 		)
-		
 		if learning_rates_history and weight_decays_history:
 			viz.plot_hyperparameter_evolution(
 				eta_min=eta_min,
@@ -6465,24 +6507,23 @@ def tip_adapter_finetune_multi_label(
 				weight_decays=weight_decays_history,
 				fname=plot_paths["hp_evol"],
 			)
-	
+
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
 		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
-	
 	viz.plot_train_val_losses(
 		train_losses=training_losses,
 		val_losses=validation_losses,
 		fname=plot_paths["losses"],
 	)
-
-	viz.plot_alpha_beta_evolution(
-		alphas=alphas,
-		betas=betas,
-		fname=plot_paths["alpha_beta_evol"],
-	)
+	if alphas and betas:
+		viz.plot_alpha_beta_evolution(
+			alphas=alphas,
+			betas=betas,
+			fname=plot_paths["alpha_beta_evol"],
+		)
 
 	return best_model_eval_results
