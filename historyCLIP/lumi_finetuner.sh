@@ -285,6 +285,13 @@ RSLORA_ALPHA="8.0"
 VERA_RANK=256
 # VERA_LRS=(1.0e-03 5.0e-05 5.0e-05 5.0e-05 5.0e-05)  # 10x orig LRS=(1.0e-04 ...)
 VERA_LRS=(5.0e-04 5.0e-05 5.0e-05 5.0e-05 5.0e-05)    # 10x current LRS=(5.0e-05 ...)
+# Adapter-based PEFT (CLIP-Adapter: Gao et al. IJCV 2023; Tip-Adapter-F: Zhang et al. ECCV 2022):
+# Backbone is completely frozen; lightweight bottleneck/cache-key parameters use higher LR (~1e-3).
+ADAPTER_LRS=(1.0e-03 1.0e-03 1.0e-03 1.0e-03 1.0e-03)
+ADAPTER_BOTTLENECK_DIM=256
+TIP_INITIAL_BETA=5.5
+TIP_INITIAL_ALPHA=1.0
+TIP_SUPPORT_SHOTS=16
 LORA_DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 # LORA_PLUS_LAMBDAS=(4.0 16.0 16.0 16.0 16.0)  # only used by lora_plus
 # LoRA+ lambda: ratio of B/A learning rates.
@@ -351,6 +358,8 @@ if [ "$strategy" = "rslora" ]; then
 elif [ "$strategy" = "vera" ]; then
 	LEARNING_RATE="${VERA_LRS[$dataset_index]}"
 	EFFECTIVE_LORA_RANK="$VERA_RANK"
+elif [ "$strategy" = "adapter" ]; then
+	LEARNING_RATE="${ADAPTER_LRS[$dataset_index]}"
 fi
 
 ##############################################################################
@@ -441,10 +450,19 @@ if [ "$strategy" = "lora_plus" ]; then
 	CMD="$CMD --lora_plus_lambda \"${LORA_PLUS_LAMBDAS[$dataset_index]}\""
 fi
 
-# ── Adapter: pass the specific adapter variant ───────────────────────────
+# ── Adapter: pass the specific adapter variant & hyperparameters ─────────
 # ADAPTER_METHOD is one of: tip_adapter_f, clip_adapter_v,
 #                            clip_adapter_vt, clip_adapter_t, tip_adapter
-[ -n "$ADAPTER_METHOD"  ] && CMD="$CMD --adapter_method  \"$ADAPTER_METHOD\""
+if [ -n "$ADAPTER_METHOD" ]; then
+	CMD="$CMD --adapter_method \"$ADAPTER_METHOD\""
+	if [[ "$ADAPTER_METHOD" == clip_adapter* ]]; then
+		CMD="$CMD --bottleneck_dim \"$ADAPTER_BOTTLENECK_DIM\""
+	elif [[ "$ADAPTER_METHOD" == tip_adapter* ]]; then
+		CMD="$CMD --initial_beta \"$TIP_INITIAL_BETA\""
+		CMD="$CMD --initial_alpha \"$TIP_INITIAL_ALPHA\""
+		CMD="$CMD --support_shots \"$TIP_SUPPORT_SHOTS\""
+	fi
+fi
 
 # ── Baseline: pass zero_shot or probe as the baseline method ─────────────
 [ -n "$BASELINE_METHOD" ] && CMD="$CMD --baseline_method \"$BASELINE_METHOD\""

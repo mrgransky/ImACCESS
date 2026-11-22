@@ -5948,6 +5948,18 @@ def tip_adapter_finetune_multi_label(
 		normalize_by_class_count=True,
 	)
 
+	# Calibrate global scalar logit_bias to multi-label prior log-odds so non-shift-invariant
+	# BCEWithLogitsLoss starts around negative prior logits (preserving exact I2T & T2I rankings)
+	n_calib = min(512, train_feats.shape[0])
+	if n_calib > 0:
+		adapter_module.calibrate_logit_bias(
+			sample_features=train_feats[:n_calib],
+			active_mask=active_mask,
+			train_freq=train_freq,
+			num_samples=N,
+			temperature=temperature,
+		)
+
 	if verbose:
 		cache_stats = adapter_module.get_memory_footprint()
 		print(f"\n[CACHE] {tip_adapter_method}:")
@@ -6006,17 +6018,51 @@ def tip_adapter_finetune_multi_label(
 		return total_loss / total_samples if total_samples > 0 else 0.0
 
 	@torch.no_grad()
-	def _grid_search_alpha_beta() -> Tuple[float, float, float]:
+	def _compute_tip_val_map_at_k(
+		alpha_override: Optional[float] = None,
+		beta_override: Optional[float] = None,
+		k: int = 10,
+	) -> float:
+		"""Fast vectorized validation I2T mAP@k on active classes for ranking-metric HP search."""
+		adapter_module.eval()
+		max_batches = max(50, len(val_feature_loader) // 10)
+		ap_sum = 0.0
+		valid_count = 0
+		ranks = torch.arange(1, k + 1, device=device, dtype=torch.float32).unsqueeze(0)
+		for bidx, (v_feats, v_lbls) in enumerate(val_feature_loader):
+			if bidx >= max_batches:
+				break
+			if v_feats.size(0) == 0:
+				continue
+			vf = v_feats.to(device, non_blocking=True).float()
+			vl = v_lbls.to(device, non_blocking=True).float()
+			scores = adapter_module(vf, temperature=temperature, alpha=alpha_override, beta=beta_override)
+			eff_k = min(k, scores.shape[1])
+			topk_idx = scores.topk(eff_k, dim=1).indices
+			hits = vl.gather(1, topk_idx)
+			cum_hits = hits.cumsum(dim=1)
+			prec_at_r = cum_hits / ranks[:, :eff_k]
+			denom = vl.sum(dim=1).clamp(max=eff_k)
+			valid = denom > 0
+			if valid.any():
+				ap = (prec_at_r * hits).sum(dim=1)[valid] / denom[valid]
+				ap_sum += ap.sum().item()
+				valid_count += int(valid.sum().item())
+		return ap_sum / valid_count if valid_count > 0 else 0.0
+
+	@torch.no_grad()
+	def _grid_search_alpha_beta(k: int = 10) -> Tuple[float, float, float]:
 		"""
-		Validation grid search over (alpha, beta) per Zhang et al. (ECCV 2022, Sec. 4.1).
-		Precomputes clip_logits once and cache_logits once per beta across the validation slice.
+		Validation grid search over (alpha, beta) maximizing validation I2T mAP@k
+		(faithful to Zhang et al., ECCV 2022 Sec. 4.1 search_hp, which optimizes validation
+		accuracy/ranking rather than raw loss so alpha is never shrunk just to shift logit scale).
 		"""
 		adapter_module.eval()
 		max_batches = max(50, len(val_feature_loader) // 10)
-		alpha_grid = sorted({float(initial_alpha), 0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0})
+		alpha_grid = sorted({float(initial_alpha), 0.0, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 4.0})
 		beta_grid = sorted({float(initial_beta), 1.0, 2.0, 3.5, 5.5, 8.0, 12.0, 20.0})
 
-		# Gather validation slice batches once
+		# Gather validation slice batches + zero-shot clip_logits ONCE
 		val_batches = []
 		for bidx, (v_feats, v_lbls) in enumerate(val_feature_loader):
 			if bidx >= max_batches:
@@ -6028,44 +6074,45 @@ def tip_adapter_finetune_multi_label(
 			c_logits = adapter_module.compute_clip_logits(vf_gpu, temperature=temperature)
 			val_batches.append((vf_gpu, vl_gpu, c_logits))
 
-		best_loss = float('inf')
+		ranks = torch.arange(1, k + 1, device=device, dtype=torch.float32).unsqueeze(0)
+		best_score = -1.0
 		best_alpha = float(adapter_module.alpha.item())
 		best_beta = float(adapter_module.beta.item())
 
 		for b_val in beta_grid:
-			# Compute cache_logits once per beta across all validation batches
+			# Compute temperature-scaled cache_logits once per beta across all validation batches
 			cache_logits_list = [
-				adapter_module.compute_cache_logits(vf_gpu, beta=b_val)
+				adapter_module.compute_cache_logits(vf_gpu, beta=b_val, temperature=temperature)
 				for vf_gpu, _, _ in val_batches
 			]
 			for a_val in alpha_grid:
-				tot_l = 0.0
-				tot_n = 0
+				ap_sum = 0.0
+				valid_n = 0
 				for (_, vl_gpu, c_logits), cache_l in zip(val_batches, cache_logits_list):
-					bs = vl_gpu.size(0)
 					t_logits = c_logits + a_val * cache_l
-					bl, _, _ = compute_multilabel_logit_loss(
-						logits=t_logits,
-						label_vectors=vl_gpu,
-						criterion_i2t=criterion_i2t,
-						criterion_t2i=criterion_t2i,
-						active_mask=active_mask,
-						loss_weights=loss_weights,
-					)
-					tot_l += bl.item() * bs
-					tot_n += bs
-				avg_l = tot_l / tot_n if tot_n > 0 else float('inf')
-				if avg_l < best_loss:
-					best_loss = avg_l
+					eff_k = min(k, t_logits.shape[1])
+					topk_idx = t_logits.topk(eff_k, dim=1).indices
+					hits = vl_gpu.gather(1, topk_idx)
+					cum_hits = hits.cumsum(dim=1)
+					prec_at_r = cum_hits / ranks[:, :eff_k]
+					denom = vl_gpu.sum(dim=1).clamp(max=eff_k)
+					valid = denom > 0
+					if valid.any():
+						ap = (prec_at_r * hits).sum(dim=1)[valid] / denom[valid]
+						ap_sum += ap.sum().item()
+						valid_n += int(valid.sum().item())
+				avg_map = ap_sum / valid_n if valid_n > 0 else 0.0
+				if avg_map > best_score:
+					best_score = avg_map
 					best_alpha = a_val
 					best_beta = b_val
 
 		if verbose:
 			print(
 				f"[GRID SEARCH] Searched {len(beta_grid)} β × {len(alpha_grid)} α = {len(beta_grid)*len(alpha_grid)} configs "
-				f"→ best α={best_alpha}, β={best_beta} (val_loss={best_loss:.6f})"
+				f"→ best α={best_alpha}, β={best_beta} (val I2T mAP@{k}={best_score:.4f})"
 			)
-		return best_alpha, best_beta, best_loss
+		return best_alpha, best_beta, best_score
 
 	# Trainable parameters: empty for training-free tip_adapter; [cache_keys] for tip_adapter_f
 	trainable_parameters = [p for p in model.parameters() if p.requires_grad]
@@ -6108,8 +6155,17 @@ def tip_adapter_finetune_multi_label(
 		if verbose:
 			print(f"\n[{tip_adapter_method}] Training-free mode — running validation grid search over (α, β)...")
 
-		best_alpha, best_beta, best_val_loss = _grid_search_alpha_beta()
+		best_alpha, best_beta, best_val_map = _grid_search_alpha_beta()
 		adapter_module.set_alpha_beta(best_alpha, best_beta)
+		if n_calib > 0:
+			adapter_module.calibrate_logit_bias(
+				sample_features=train_feats[:n_calib],
+				active_mask=active_mask,
+				train_freq=train_freq,
+				num_samples=N,
+				temperature=temperature,
+			)
+		best_val_loss = _compute_tip_val_loss()
 		actual_trained_epochs = 0
 
 		# Save checkpoint so downstream inference can load the tuned Tip-Adapter cache
@@ -6118,6 +6174,7 @@ def tip_adapter_finetune_multi_label(
 				"epoch": 0,
 				"model_state_dict": {k: v.cpu() for k, v in model.state_dict().items()},
 				"best_val_loss": best_val_loss,
+				"best_val_map10": best_val_map,
 				"alpha": best_alpha,
 				"beta": best_beta,
 			},
@@ -6158,7 +6215,7 @@ def tip_adapter_finetune_multi_label(
 			eval_results=best_model_eval_results,
 			extra_lines=[
 				f"Tip-Adapter (Training-Free): M={adapter_module.cache_keys.shape[0]:,} unique cache keys | "
-				f"grid-searched α={best_alpha}, β={best_beta}, val_loss={best_val_loss:.6f}",
+				f"grid-searched α={best_alpha}, β={best_beta}, val_mAP@10={best_val_map:.4f}, val_loss={best_val_loss:.6f}",
 			],
 			verbose=verbose,
 		)
@@ -6184,20 +6241,22 @@ def tip_adapter_finetune_multi_label(
 	# ─────────────────────────────────────────────────────────────────────────
 	# BRANCH B: Tip-Adapter-F (Fine-Tuned Cache Keys — Zhang et al., ECCV 2022, Sec. 3.2)
 	# ─────────────────────────────────────────────────────────────────────────
+	# Use weight_decay=0.0 on unit-sphere-normalized cache_keys and scalar logit_bias
+	# (radial weight decay on L2-normalized keys only causes artificial norm shrinkage).
 	optimizer = torch.optim.AdamW(
 		params=trainable_parameters,
 		lr=learning_rate,
 		betas=(0.9, 0.98),
 		eps=1e-6,
-		weight_decay=weight_decay,
+		weight_decay=0.0,
 	)
 	if verbose:
-		print(f"\n{optimizer.__class__.__name__} optimizer (Tip-Adapter-F cache keys only)")
+		print(f"\n{optimizer.__class__.__name__} optimizer (Tip-Adapter-F cache keys + scalar logit_bias)")
 		print(f"  ├─ Params: {sum(p.numel() for p in trainable_parameters):,}")
 		print(f"  ├─ LR: {learning_rate}")
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
-		print(f"  └─ Weight Decay: {weight_decay}")
+		print(f"  └─ Weight Decay: 0.0 (disabled for unit-normalized keys & scalar bias)")
 
 	estimated_epochs = 2 * minimum_epochs
 	T_max = estimated_epochs * len(train_feature_loader)
@@ -6353,7 +6412,10 @@ def tip_adapter_finetune_multi_label(
 			f"Recall: {retrieval_metrics_per_epoch['txt2img'].get('Recall', {})}"
 		)
 
-		print(f"   ├─ α: {adapter_module.alpha.item():.5f}, β: {adapter_module.beta.item():.5f}")
+		print(
+			f"   ├─ α: {adapter_module.alpha.item():.5f}, β: {adapter_module.beta.item():.5f}, "
+			f"logit_bias: {adapter_module.logit_bias.item():.4f}"
+		)
 		alphas.append(adapter_module.alpha.item())
 		betas.append(adapter_module.beta.item())
 
@@ -6398,28 +6460,28 @@ def tip_adapter_finetune_multi_label(
 
 	print(f"[{tip_adapter_method}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 
-	# Post-training (alpha, beta) validation grid search on best trained cache keys (Zhang et al., ECCV 2022, Sec. 3.2)
+	# Post-training (alpha, beta) validation grid search maximizing val I2T mAP@10 (Zhang et al., ECCV 2022, Sec. 3.2)
 	if os.path.exists(mdl_fpth):
 		ckpt = torch.load(mdl_fpth, map_location=device)
 		model.load_state_dict(ckpt["model_state_dict"], strict=True)
-		pre_search_loss = _compute_tip_val_loss()
-		gs_alpha, gs_beta, gs_loss = _grid_search_alpha_beta()
-		if gs_loss < pre_search_loss - 1e-6:
+		pre_search_map = _compute_tip_val_map_at_k(k=10)
+		gs_alpha, gs_beta, gs_map = _grid_search_alpha_beta(k=10)
+		if gs_map > pre_search_map + 1e-6:
 			adapter_module.set_alpha_beta(gs_alpha, gs_beta)
 			ckpt["model_state_dict"] = {k: v.cpu() for k, v in model.state_dict().items()}
-			ckpt["best_val_loss"] = gs_loss
+			ckpt["best_val_map10"] = gs_map
 			ckpt["alpha"] = gs_alpha
 			ckpt["beta"] = gs_beta
 			torch.save(ckpt, mdl_fpth)
 			if verbose:
 				print(
-					f"[{tip_adapter_method}] Post-training grid search improved val_loss "
-					f"{pre_search_loss:.6f} → {gs_loss:.6f} (α={gs_alpha}, β={gs_beta}); updated checkpoint."
+					f"[{tip_adapter_method}] Post-training grid search improved val I2T mAP@10 "
+					f"{pre_search_map:.4f} → {gs_map:.4f} (α={gs_alpha}, β={gs_beta}); updated checkpoint."
 				)
 		elif verbose:
 			print(
 				f"[{tip_adapter_method}] Keeping initial α={adapter_module.alpha.item():.4f}, "
-				f"β={adapter_module.beta.item():.4f} (val_loss={pre_search_loss:.6f})."
+				f"β={adapter_module.beta.item():.4f} (val I2T mAP@10={pre_search_map:.4f})."
 			)
 
 	best_model_eval_results = evaluate_best_model(

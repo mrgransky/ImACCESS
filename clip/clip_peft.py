@@ -930,12 +930,12 @@ class TipAdapterLinear(torch.nn.Module):
 	"""
 	Tip-Adapter: Training-Free Adaption of CLIP for Few-Shot Classification (Zhang et al., ECCV 2022)
 
-	Exact logit-space key-value cache formulation (Eq. 4-5):
+	Exact logit-space key-value cache formulation (Eq. 4-5) calibrated for multi-label BCE:
 		clip_logits  = (f_norm @ W_c.T) / temperature
 		affinity     = f_norm @ K_norm.T                       in [-1, 1]
 		kernel       = exp(-beta * (1 - affinity))             in (0, 1]
-		cache_logits = kernel @ L_val                          in [0, 1]  (column-normalized for multi-label)
-		tip_logits   = clip_logits + alpha * cache_logits
+		cache_logits = (kernel @ L_val) / temperature          in [0, 1/temperature]
+		tip_logits   = clip_logits + alpha * cache_logits + logit_bias
 
 	Notes:
 		- Entire CLIP visual and text encoders remain completely frozen.
@@ -943,6 +943,10 @@ class TipAdapterLinear(torch.nn.Module):
 		- Cache values L_val ∈ R^{M × C} are one-hot (single-label) or column-normalized multi-hot (multi-label)
 		  label vectors so head, body, and rare classes share identical [0, 1] cache affinity scale while
 		  inactive classes (0 support shots) remain 0 and fall back identically to zero-shot CLIP.
+		- Dividing cache_logits by temperature places the [0, 1] column-normalized cache affinity on the exact
+		  same scale as (f_norm @ W_c.T) / temperature.
+		- A single scalar logit_bias b (SigLIP-style) calibrates the global sigmoid decision boundary for
+		  non-shift-invariant BCEWithLogitsLoss while leaving ALL I2T and T2I rankings 100% invariant.
 		- alpha and beta are non-trainable hyperparameters tuned via validation grid search (no SGD/AdamW).
 	"""
 
@@ -984,11 +988,55 @@ class TipAdapterLinear(torch.nn.Module):
 		self.register_buffer('beta', torch.tensor(float(initial_beta), device=self.device, dtype=torch.float32))
 		self.register_buffer('alpha', torch.tensor(float(initial_alpha), device=self.device, dtype=torch.float32))
 
+		# Global scalar logit bias (SigLIP-style): ranking-invariant for both I2T & T2I,
+		# prevents non-shift-invariant BCEWithLogitsLoss from penalizing positive cache logits.
+		init_bias = torch.tensor(0.0, device=self.device, dtype=torch.float32)
+		if self.trainable_keys:
+			self.logit_bias = torch.nn.Parameter(init_bias, requires_grad=True)
+		else:
+			self.register_buffer('logit_bias', init_bias)
+
 	@torch.no_grad()
 	def set_alpha_beta(self, alpha: float, beta: float) -> None:
 		"""Update alpha and beta scalar buffers (e.g. after validation grid search)."""
 		self.alpha.fill_(float(alpha))
 		self.beta.fill_(float(beta))
+
+	@torch.no_grad()
+	def calibrate_logit_bias(
+		self,
+		sample_features: torch.Tensor,
+		active_mask: torch.Tensor,
+		train_freq: torch.Tensor,
+		num_samples: int,
+		temperature: float = 0.07,
+	) -> float:
+		"""
+		Initialize scalar logit_bias so Step-0 active logits center at the empirical multi-label
+		prior log-odds log(p_bar / (1 - p_bar)), eliminating the positive CLIP modality-gap offset
+		under BCEWithLogitsLoss without altering any I2T or T2I ranking.
+		"""
+		self.eval()
+		f = sample_features.to(device=self.device, dtype=torch.float32)
+		clip_l = self.compute_clip_logits(f, temperature=temperature)
+		cache_l = self.compute_cache_logits(f, temperature=temperature)
+		raw_tip = clip_l + self.alpha.float().clamp(min=0.0) * cache_l
+		active_m = active_mask.to(device=self.device, dtype=torch.bool)
+		mu_raw = raw_tip[:, active_m].mean().item() if active_m.any() else raw_tip.mean().item()
+
+		n_active = max(int(active_m.sum().item()), 1)
+		total_pos = float(train_freq.float().cpu()[active_m.cpu()].sum().item())
+		p_bar = max(1e-6, min(0.5, total_pos / max(float(num_samples) * float(n_active), 1.0)))
+		prior_log_odds = math.log(p_bar / (1.0 - p_bar))
+
+		bias_val = prior_log_odds - mu_raw
+		self.logit_bias.data.fill_(float(bias_val))
+		if self.verbose:
+			print(
+				f"[{self.__class__.__name__}] Calibrated scalar logit_bias={bias_val:.4f} "
+				f"(raw μ={mu_raw:+.3f}, prior p̄={p_bar:.6f}, log-odds={prior_log_odds:+.3f})"
+			)
+		return float(bias_val)
 
 	@torch.no_grad()
 	def set_cache(
@@ -1081,10 +1129,12 @@ class TipAdapterLinear(torch.nn.Module):
 		self,
 		image_features: torch.Tensor,
 		beta: Optional[float] = None,
+		temperature: float = 0.07,
 	) -> torch.Tensor:
 		"""
-		Cache logits exp(-beta * (1 - f_norm @ K_norm.T)) @ L_val in FP32.
+		Cache logits (exp(-beta * (1 - f_norm @ K_norm.T)) @ L_val) / temperature in FP32.
 		Row-normalizing cache_keys ensures affinity ∈ [-1, 1] and kernel ∈ (0, 1] (no exp overflow).
+		Dividing by temperature places column-normalized cache affinity on the same scale as clip_logits.
 		"""
 		with torch.amp.autocast(device_type=image_features.device.type, enabled=False):
 			f_norm = torch.nn.functional.normalize(image_features.float(), p=2, dim=-1)
@@ -1095,7 +1145,7 @@ class TipAdapterLinear(torch.nn.Module):
 			affinity = (f_norm @ k_norm.T).clamp(min=-1.0, max=1.0)
 			beta_val = float(beta) if beta is not None else self.beta.float().clamp(min=1e-4)
 			kernel = torch.exp(-beta_val * (1.0 - affinity))
-			return kernel @ self.cache_values.to(device=f_norm.device, dtype=torch.float32)
+			return (kernel @ self.cache_values.to(device=f_norm.device, dtype=torch.float32)) / float(temperature)
 
 	def forward(
 		self,
@@ -1106,18 +1156,20 @@ class TipAdapterLinear(torch.nn.Module):
 		return_components: bool = False,
 	) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
 		"""
-		Forward pass computing exact Tip-Adapter(-F) class logits [B, C] in FP32:
-			tip_logits = clip_logits + alpha * cache_logits
+		Forward pass computing calibrated Tip-Adapter(-F) class logits [B, C] in FP32:
+			tip_logits = clip_logits + alpha * cache_logits + logit_bias
 		"""
 		with torch.amp.autocast(device_type=image_features.device.type, enabled=False):
 			clip_logits = self.compute_clip_logits(image_features, temperature=temperature)
+			bias = self.logit_bias.to(device=clip_logits.device, dtype=torch.float32)
 			if self.cache_keys.shape[0] == 0:
+				tip_logits = clip_logits + bias
 				if return_components:
-					return clip_logits, clip_logits, torch.zeros_like(clip_logits)
-				return clip_logits
-			cache_logits = self.compute_cache_logits(image_features, beta=beta)
+					return tip_logits, clip_logits, torch.zeros_like(clip_logits)
+				return tip_logits
+			cache_logits = self.compute_cache_logits(image_features, beta=beta, temperature=temperature)
 			alpha_val = float(alpha) if alpha is not None else self.alpha.float().clamp(min=0.0)
-			tip_logits = clip_logits + alpha_val * cache_logits
+			tip_logits = clip_logits + alpha_val * cache_logits + bias
 			if return_components:
 				return tip_logits, clip_logits, cache_logits
 			return tip_logits
@@ -1126,12 +1178,12 @@ class TipAdapterLinear(torch.nn.Module):
 		keys_mb = (self.cache_keys.numel() * 4) / (1024 ** 2) if self.cache_keys.numel() > 0 else 0.0
 		vals_mb = (self.cache_values.numel() * 4) / (1024 ** 2) if self.cache_values.numel() > 0 else 0.0
 		text_mb = (self.text_features.numel() * 4) / (1024 ** 2) if self.text_features.numel() > 0 else 0.0
-		param_mb = (self.beta.numel() + self.alpha.numel()) * 4 / (1024 ** 2)
+		param_mb = (self.beta.numel() + self.alpha.numel() + self.logit_bias.numel()) * 4 / (1024 ** 2)
 		cache_memory_mb = keys_mb + vals_mb
 
 		return {
 			'cache_keys_params': int(self.cache_keys.numel()),
-			'trainable_params': int(self.cache_keys.numel()) if self.trainable_keys else 0,
+			'trainable_params': int(self.cache_keys.numel() + self.logit_bias.numel()) if self.trainable_keys else 0,
 			'cache_memory_mb': cache_memory_mb,
 			'text_memory_mb': text_mb,
 			'param_memory_mb': param_mb,
@@ -1146,7 +1198,7 @@ class TipAdapterLinear(torch.nn.Module):
 			f"  ├─ cache_keys: {tuple(self.cache_keys.shape)} (trainable={self.trainable_keys})\n"
 			f"  ├─ cache_values: {tuple(self.cache_values.shape)}\n"
 			f"  ├─ text_features: {tuple(self.text_features.shape)}\n"
-			f"  └─ alpha={self.alpha.item():.4f}, beta={self.beta.item():.4f}\n"
+			f"  └─ alpha={self.alpha.item():.4f}, beta={self.beta.item():.4f}, logit_bias={self.logit_bias.item():.4f}\n"
 		)
 
 

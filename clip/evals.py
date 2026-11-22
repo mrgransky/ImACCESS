@@ -1562,10 +1562,14 @@ def get_validation_metrics(
 
 		if verbose:
 			print(f"\n[TIP-ADAPTER EVAL — EXACT LOGIT-SPACE SCORING]")
-			print(f"  ├─ Scoring fn  : (f_norm @ W_c.T)/temp + alpha * exp(-beta*(1 - f_norm @ K_norm.T)) @ L_val")
+			print(f"  ├─ Scoring fn  : (f_norm @ W_c.T + alpha * exp(-beta*(1 - f_norm @ K_norm.T)) @ L_val)/temp + b")
 			print(f"  ├─ Cache keys  : {tuple(model.tip_adapter.cache_keys.shape)} (trainable={model.tip_adapter.trainable_keys})")
 			print(f"  ├─ Cache vals  : {tuple(model.tip_adapter.cache_values.shape)}")
-			print(f"  ├─ alpha, beta : alpha={model.tip_adapter.alpha.item():.4f}, beta={model.tip_adapter.beta.item():.4f}, temp={temperature}")
+			print(
+				f"  ├─ alpha, beta : alpha={model.tip_adapter.alpha.item():.4f}, "
+				f"beta={model.tip_adapter.beta.item():.4f}, "
+				f"logit_bias={model.tip_adapter.logit_bias.item():.4f}, temp={temperature}"
+			)
 			print(
 				f"  └─ Logits      : (min, max)=({i2t_similarity.min().item():.3f}, {i2t_similarity.max().item():.3f}) "
 				f"μ±σ={i2t_similarity.mean().item():.3f}±{i2t_similarity.std().item():.3f}"
