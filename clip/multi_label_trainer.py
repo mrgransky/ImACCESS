@@ -5271,7 +5271,8 @@ def clip_adapter_finetune_multi_label(
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
 	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none')
 	if verbose:
-		print(f"\n[I2T] {criterion_i2t.__class__.__name__}  pos_weight range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
+		print(f"   ├─ pos_weight range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
 		print(f"   ├─ N={N} active={active_mask.sum().item():,}")
 		print(f"[T2I] {criterion_t2i.__class__.__name__} no pos_weight")
 
@@ -5296,7 +5297,7 @@ def clip_adapter_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n{optimizer.__class__.__name__}")
-		print(f"  ├─ Params: {sum(p.numel() for p in adapter_params):,} (decay: {sum(p.numel() for p in decay_params):,}, no_decay: {sum(p.numel() for p in no_decay_params):,})")
+		print(f"  ├─ Params: {sum(p.numel() for p in adapter_params):,} (decay: {sum(p.numel() for p in decay_params):,} no_decay: {sum(p.numel() for p in no_decay_params):,})")
 		print(f"  ├─ LR: {learning_rate}")
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")

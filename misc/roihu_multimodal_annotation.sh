@@ -66,6 +66,7 @@ EMBEDDING_MODEL="Qwen/Qwen3-VL-Embedding-8B"
 # EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 
 CLIP_MODEL="ViT-L/14@336px"
+DIGIT_FILTERING="aggressive" # or "strategic"
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 DATASETS=(
 	${DATASET_DIRECTORY}/HISTORY_X4
@@ -95,6 +96,7 @@ python -u gt_kws_multimodal.py \
 	--vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
 	--vlm_max_generated_tks $VLM_MAX_GENERATED_TOKENS \
 	--embedding_model_id $EMBEDDING_MODEL \
+	--digit_filtering $DIGIT_FILTERING \
 	--clip_architecture $CLIP_MODEL \
 	--max_keywords 3 \
 	--batch_size $GENERAL_BATCH_SIZE \

@@ -264,7 +264,7 @@ LRS=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06) # orig
 WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 EPOCHS=(100 100 150 150 150)
 
-# ── LoRA family hyperparameters ──────────────────────────────────────────
+# LoRA family hyperparameters
 # Used by: lora, lora_plus, rslora, dora, vera
 #   LORA_RANK    : intrinsic rank of the low-rank decomposition
 #   LORA_ALPHA   : scaling factor (typically 2× rank)
@@ -277,21 +277,28 @@ LORA_ALPHAS=()
 for rank in "${LORA_RANKS[@]}"; do
 	LORA_ALPHAS+=("$(( rank * 2 )).0")
 done
+
 # rsLoRA (Kalajdzievski, 2023): alpha MUST be rank-independent so scale = alpha / sqrt(r)
 # stabilizes variance across ranks (alpha=8.0 -> scale=2.0 at r=16, scale=1.0 at r=64).
 RSLORA_ALPHA="8.0"
+
 # VeRA (Kopiczko et al., ICLR 2024): frozen shared matrices benefit from higher rank (256)
 # and ~10x higher learning rate than LoRA since only 1D scaling vectors (d, b) are trained.
 VERA_RANK=256
 VERA_LRS=(1.0e-03 5.0e-05 5.0e-05 5.0e-05 5.0e-05)
-# Adapter-based PEFT (CLIP-Adapter: Gao et al. IJCV 2023; Tip-Adapter-F: Zhang et al. ECCV 2022):
+
+# Adapter-based PEFT: 
+# CLIP-Adapter: Gao et al. IJCV 2023; 
+# Tip-Adapter-F: Zhang et al. ECCV 2022;
 # Backbone is completely frozen; lightweight bottleneck/cache-key parameters use higher LR (~1e-3).
 ADAPTER_LRS=(1.0e-03 1.0e-03 1.0e-03 1.0e-03 1.0e-03)
 ADAPTER_BOTTLENECK_DIM=256
 TIP_INITIAL_BETA=5.5
 TIP_INITIAL_ALPHA=1.0
 TIP_SUPPORT_SHOTS=16
+
 LORA_DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
+
 # LoRA+ lambda: ratio of B/A learning rates.
 # Per the LoRA+ paper (Hayou et al. 2024), effective range is ~16–256;
 # not strongly tied to dataset size — kept constant across datasets here,
@@ -299,13 +306,13 @@ LORA_DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 LORA_PLUS_LAMBDAS=(4.0 16.0 16.0 16.0 16.0)  # orig
 # LORA_PLUS_LAMBDAS=(8 16 16 16 16)
 
-# ── Progressive fine-tuning parameters ──────────────────────────────────
+# Progressive fine-tuning parameters
 # Controls the layer-by-layer unfreezing schedule used in "full" strategy
 MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
 MIN_EPOCHS_PER_PHASE=(5 5 5 5 5)
 TOTAL_NUM_PHASES=(8 4 4 4 4)
 
-# ── Early stopping parameters ────────────────────────────────────────────
+# ── Early stopping parameters
 # INIT_MIN_EPOCHS : minimum epochs before early stopping can trigger
 # PATIENCE        : how many checks without improvement before stopping
 # MIN_DELTA       : minimum absolute improvement to count as progress
@@ -315,7 +322,7 @@ EARLY_STOPPING_PATIENCE=(3 5 5 5 5)
 EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)
 
-# ── Stability / convergence thresholds ──────────────────────────────────
+# ── Stability / convergence thresholds
 # VOLATILITY_THRESHOLD  : max allowed loss variance before flagging instability
 # SLOPE_THRESHOLD       : minimum loss slope to consider training still improving
 # PAIRWISE_IMP_THRESHOLD: minimum pairwise epoch-to-epoch improvement

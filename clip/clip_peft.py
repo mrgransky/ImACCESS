@@ -941,12 +941,12 @@ class TipAdapterLinear(torch.nn.Module):
 		- Entire CLIP visual and text encoders remain completely frozen.
 		- Cache keys K_norm ∈ R^{M × D} are L2-normalized frozen visual features of deduplicated support images.
 		- Cache values L_val ∈ R^{M × C} are one-hot (single-label) or column-normalized multi-hot (multi-label)
-		  label vectors so head, body, and rare classes share identical [0, 1] cache affinity scale while
-		  inactive classes (0 support shots) remain 0 and fall back identically to zero-shot CLIP.
+			label vectors so head, body, and rare classes share identical [0, 1] cache affinity scale while
+			inactive classes (0 support shots) remain 0 and fall back identically to zero-shot CLIP.
 		- Dividing cache_logits by temperature places the [0, 1] column-normalized cache affinity on the exact
-		  same scale as (f_norm @ W_c.T) / temperature.
+			same scale as (f_norm @ W_c.T) / temperature.
 		- A single scalar logit_bias b (SigLIP-style) calibrates the global sigmoid decision boundary for
-		  non-shift-invariant BCEWithLogitsLoss while leaving ALL I2T and T2I rankings 100% invariant.
+			non-shift-invariant BCEWithLogitsLoss while leaving ALL I2T and T2I rankings 100% invariant.
 		- alpha and beta are non-trainable hyperparameters tuned via validation grid search (no SGD/AdamW).
 	"""
 
@@ -1201,7 +1201,6 @@ class TipAdapterLinear(torch.nn.Module):
 			f"  └─ alpha={self.alpha.item():.4f}, beta={self.beta.item():.4f}, logit_bias={self.logit_bias.item():.4f}\n"
 		)
 
-
 class TipAdapterFLinear(TipAdapterLinear):
 	"""
 	Tip-Adapter-F: Fine-Tuned Tip-Adapter (Zhang et al., ECCV 2022, Sec. 3.2 & Eq. 6).
@@ -1229,7 +1228,6 @@ class TipAdapterFLinear(TipAdapterLinear):
 			verbose=verbose,
 		)
 
-
 class CLIPAdapterBottleneck(torch.nn.Module):
 	"""
 	Bottleneck feature adapter for CLIP-Adapter (Gao et al., IJCV 2023, Eq. 2, 4, 5).
@@ -1241,9 +1239,9 @@ class CLIPAdapterBottleneck(torch.nn.Module):
 	Notes:
 		- Matches Gao et al. (IJCV 2023) convex residual blending with default fixed ratio = 0.2.
 		- up_proj is zero-initialized so at step 0, x* = (1 - ratio) * x, which after L2
-		  normalization equals exact zero-shot CLIP (0-perturbation start).
+			normalization equals exact zero-shot CLIP (0-perturbation start).
 		- If trainable_ratio=True, ratio is parameterized via sigmoid(logit) ∈ (0, 1) so it
-		  remains strictly bounded.
+			remains strictly bounded.
 	"""
 
 	def __init__(
@@ -1361,7 +1359,6 @@ class CLIPAdapterBottleneck(torch.nn.Module):
 			f"  └─ Memory footprint: {self.get_memory_footprint()['memory_mb']:.4f} MB\n"
 		)
 
-
 class CLIPAdapterText(torch.nn.Module):
 	"""
 	CLIP-Adapter for the text encoder (Gao et al., IJCV 2023, Eq. 5).
@@ -1407,7 +1404,6 @@ class CLIPAdapterText(torch.nn.Module):
 	def get_memory_footprint(self) -> dict:
 		"""Return memory usage of the text adapter."""
 		return self.adapter.get_memory_footprint()
-
 
 class CLIPAdapterVisual(torch.nn.Module):
 	"""
@@ -1481,7 +1477,6 @@ class CLIPAdapterVisual(torch.nn.Module):
 	def get_memory_footprint(self) -> dict:
 		return self.adapter.get_memory_footprint()
 
-
 def get_adapter_peft_clip(
 	clip_model: torch.nn.Module,
 	method: str,
@@ -1512,7 +1507,14 @@ def get_adapter_peft_clip(
 	Returns:
 		Deep-copied CLIP model with the specified adapter attached and base parameters frozen.
 	"""
-	valid_methods = ["tip_adapter", "tip_adapter_f", "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"]
+
+	valid_methods = [
+		"tip_adapter", 
+		"tip_adapter_f", 
+		"clip_adapter_v", 
+		"clip_adapter_t", 
+		"clip_adapter_vt"
+	]
 	if method not in valid_methods:
 		raise ValueError(f"method must be one of {valid_methods}, got '{method}'")
 
@@ -1705,228 +1707,212 @@ def get_adapter_peft_clip(
 
 	return model
 
-def bind_mha_lora_forward(mha_module: torch.nn.Module, method_name: str, verbose: bool = False) -> None:
-    """
-    Patches an nn.MultiheadAttention instance to compute PEFT (LoRA, DoRA, VeRA, IA3) in activation space,
-    maintaining strict behavioral parity with PyTorch's native MHA.
-    
-    Args:
-        mha_module: The nn.MultiheadAttention module to patch.
-        method_name: The name of the PEFT method (e.g., 'lora', 'dora', 'vera', 'ia3').
-        verbose: If True, print detailed debugging information during the forward pass.
-    """
+def bind_mha_lora_forward(
+	mha_module: torch.nn.Module, 
+	method_name: str, 
+	verbose: bool = False
+) -> None:
+	"""
+	Patches an nn.MultiheadAttention instance to compute PEFT (LoRA, DoRA, VeRA, IA3) in activation space,
+	maintaining strict behavioral parity with PyTorch's native MHA.
+	
+	Args:
+			mha_module: The nn.MultiheadAttention module to patch.
+			method_name: The name of the PEFT method (e.g., 'lora', 'dora', 'vera', 'ia3').
+			verbose: If True, print detailed debugging information during the forward pass.
+	"""
 
-    def forward(
-        self,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        key_padding_mask: Optional[torch.Tensor] = None,
-        need_weights: bool = True,
-        attn_mask: Optional[torch.Tensor] = None,
-        average_attn_weights: bool = True,
-        is_causal: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+	def forward(
+		self,
+		query: torch.Tensor,
+		key: torch.Tensor,
+		value: torch.Tensor,
+		key_padding_mask: Optional[torch.Tensor] = None,
+		need_weights: bool = True,
+		attn_mask: Optional[torch.Tensor] = None,
+		average_attn_weights: bool = True,
+		is_causal: bool = False,
+	) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+		if verbose:
+			print(f"\n{'='*20} MHA FORWARD START ({method_name}) {'='*20}")
+			print(f"[Input Shapes] query: {query.shape}, key: {key.shape}, value: {value.shape}")
+			print(f"[Input Dtypes] query: {query.dtype}, key: {key.dtype}, value: {value.dtype}")
+			print(f"[Flags] need_weights: {need_weights}, is_causal: {is_causal}, training: {self.training}")
 
-        if verbose:
-            print(f"\n{'='*20} MHA FORWARD START ({method_name}) {'='*20}")
-            print(f"[Input Shapes] query: {query.shape}, key: {key.shape}, value: {value.shape}")
-            print(f"[Input Dtypes] query: {query.dtype}, key: {key.dtype}, value: {value.dtype}")
-            print(f"[Flags] need_weights: {need_weights}, is_causal: {is_causal}, training: {self.training}")
+		# ---------------------------------------------------------------------
+		# 1. Handle Unbatched Inputs [L, D] -> [L, 1, D]
+		# ---------------------------------------------------------------------
+		is_batched = query.dim() == 3
+		if not is_batched:
+				if verbose:
+						print("[1. Shape Handling] Unbatched input detected. Adding batch dimension: [L, D] -> [L, 1, D]")
+				query = query.unsqueeze(1)
+				key = key.unsqueeze(1)
+				value = value.unsqueeze(1)
+		batch_first = getattr(self, "batch_first", False)
+		if batch_first:
+				if verbose:
+						print(f"[1. Shape Handling] batch_first=True. Transposing inputs from [B, L, D] to [L, B, D]")
+				# Native order internally is [L, B, D]
+				query, key, value = [x.transpose(0, 1) for x in (query, key, value)]
+		tgt_len, bsz, embed_dim = query.shape
+		src_len = key.shape[0]
+		num_heads = self.num_heads
+		head_dim = embed_dim // num_heads
+		if verbose:
+				print(f"[Dimensions] tgt_len={tgt_len}, src_len={src_len}, bsz={bsz}, embed_dim={embed_dim}, num_heads={num_heads}, head_dim={head_dim}")
 
-        # ---------------------------------------------------------------------
-        # 1. Handle Unbatched Inputs [L, D] -> [L, 1, D]
-        # ---------------------------------------------------------------------
-        is_batched = query.dim() == 3
-        if not is_batched:
-            if verbose:
-                print("[1. Shape Handling] Unbatched input detected. Adding batch dimension: [L, D] -> [L, 1, D]")
-            query = query.unsqueeze(1)
-            key = key.unsqueeze(1)
-            value = value.unsqueeze(1)
+		# ---------------------------------------------------------------------
+		# 2. in_proj in Activation Space (Supports LoRA, VeRA, DoRA, etc.)
+		# ---------------------------------------------------------------------
+		in_proj_adapter = getattr(self, f"{method_name}_in_proj", None)
+		if in_proj_adapter is not None:
+				if verbose:
+						print(f"[2. in_proj] Found adapter: {type(in_proj_adapter).__name__}. Applying in activation space.")
+						print(f"             Input to adapter: {query.shape}")
+				# Runs adapter.forward -> includes dropout and activation-space rank path
+				qkv = in_proj_adapter(query)
+				if verbose:
+						print(f"             Output from adapter (QKV combined): {qkv.shape}")
+		else:
+				if verbose:
+						print(f"[2. in_proj] No adapter found. Using standard torch.nn.functional.linear with frozen base weights.")
+				qkv = torch.nn.functional.linear(query, self.in_proj_weight, self.in_proj_bias)
+				if verbose:
+						print(f"             Output from torch.nn.functional.linear (QKV combined): {qkv.shape}")
+		# Split Q, K, V and reshape for SDPA: [B, num_heads, L, head_dim]
+		q, k, v = qkv.chunk(3, dim=-1)
+		
+		# FIXED: Use permute instead of transpose+view to avoid contiguity crashes
+		q = q.view(tgt_len, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
+		k = k.view(src_len, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
+		v = v.view(src_len, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
+		
+		if verbose:
+				print(f"[2. Reshape] Split and reshaped Q, K, V for SDPA.")
+				print(f"             Q shape: {q.shape}")
+				print(f"             K shape: {k.shape}")
+				print(f"             V shape: {v.shape}")
 
-        batch_first = getattr(self, "batch_first", False)
-        if batch_first:
-            if verbose:
-                print(f"[1. Shape Handling] batch_first=True. Transposing inputs from [B, L, D] to [L, B, D]")
-            # Native order internally is [L, B, D]
-            query, key, value = [x.transpose(0, 1) for x in (query, key, value)]
+		# ---------------------------------------------------------------------
+		# 3. Resolve Masks (Merge key_padding_mask into attn_mask)
+		# ---------------------------------------------------------------------
+		# Format attn_mask to float if boolean
+		if attn_mask is not None and attn_mask.dtype == torch.bool:
+				if verbose:
+						print(f"[3. Masks] Converting boolean attn_mask to float additive mask (-inf for True).")
+				new_attn_mask = torch.zeros_like(attn_mask, dtype=q.dtype)
+				new_attn_mask.masked_fill_(attn_mask, float("-inf"))
+				attn_mask = new_attn_mask
+		# Broadcast and combine key_padding_mask [B, S] -> [B, 1, 1, S]
+		if key_padding_mask is not None:
+				if verbose:
+						print(f"[3. Masks] Processing key_padding_mask of shape {key_padding_mask.shape}.")
+				if key_padding_mask.dtype == torch.bool:
+						kpm_float = torch.zeros((bsz, 1, 1, src_len), dtype=q.dtype, device=query.device)
+						kpm_float.masked_fill_(key_padding_mask.view(bsz, 1, 1, src_len), float("-inf"))
+				else:
+						kpm_float = key_padding_mask.view(bsz, 1, 1, src_len).to(dtype=q.dtype)
+				attn_mask = kpm_float if attn_mask is None else (attn_mask + kpm_float)
+				if verbose:
+						print(f"           Merged key_padding_mask into attn_mask. Final attn_mask shape: {attn_mask.shape if attn_mask is not None else None}")
+		dropout_p = self.dropout if self.training else 0.0
+		if verbose:
+				print(f"[Attention] Dropout probability: {dropout_p}")
 
-        tgt_len, bsz, embed_dim = query.shape
-        src_len = key.shape[0]
-        num_heads = self.num_heads
-        head_dim = embed_dim // num_heads
+		# ---------------------------------------------------------------------
+		# 4. Attention Computation: Fast Path vs. Weights Path
+		# ---------------------------------------------------------------------
+		attn_weights = None
+		if not need_weights:
+				# FIXED: Handle PyTorch SDPA restriction on is_causal + attn_mask
+				if is_causal and attn_mask is not None:
+						if verbose:
+								print(f"[4. Attention] Detected both is_causal=True and attn_mask. Merging causal mask into attn_mask to bypass SDPA restriction.")
+						causal_mask = torch.zeros((tgt_len, src_len), dtype=q.dtype, device=query.device)
+						causal_mask.masked_fill_(
+								torch.ones((tgt_len, src_len), dtype=torch.bool, device=query.device).triu(diagonal=1), 
+								float("-inf")
+						)
+						attn_mask = attn_mask + causal_mask
+						is_causal = False
+				if verbose:
+						print(f"[4. Attention] FAST PATH: Using torch.nn.functional.scaled_dot_product_attention (FlashAttention/MemEfficient).")
+				# FAST PATH: Fused FlashAttention / Memory-Efficient SDPA
+				attn_output = torch.nn.functional.scaled_dot_product_attention(
+						q, k, v,
+						attn_mask=attn_mask,
+						dropout_p=dropout_p,
+						is_causal=is_causal
+				)  # [B, num_heads, L, head_dim]
+		else:
+				if verbose:
+						print(f"[4. Attention] WEIGHTS PATH: Explicit matrix computation to return attention maps.")
+				# FALLBACK PATH: Explicit matrix computation to return attention maps
+				scale_factor = 1.0 / math.sqrt(head_dim)
+				attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale_factor  # [B, num_heads, L, S]
+				if verbose:
+						print(f"             Computed attention scores: {attn_scores.shape}")
+				if is_causal:
+						if verbose:
+								print(f"             Applying causal mask (lower triangular).")
+						causal_mask = torch.ones((tgt_len, src_len), dtype=torch.bool, device=query.device).tril()
+						attn_scores.masked_fill_(~causal_mask, float("-inf"))
+				if attn_mask is not None:
+						if verbose:
+								print(f"             Applying additive attn_mask.")
+						attn_scores = attn_scores + attn_mask
+				attn_probs = torch.nn.functional.softmax(attn_scores, dim=-1)
+				attn_probs = torch.nn.functional.dropout(attn_probs, p=dropout_p, training=self.training)
+				if verbose:
+						print(f"             Applied softmax and dropout. Attention probs shape: {attn_probs.shape}")
+				attn_output = torch.matmul(attn_probs, v)  # [B, num_heads, L, head_dim]
+				if average_attn_weights:
+						attn_weights = attn_probs.mean(dim=1)  # [B, L, S]
+						if verbose:
+								print(f"             Averaged attention weights across heads: {attn_weights.shape}")
+				else:
+						attn_weights = attn_probs               # [B, num_heads, L, S]
+						if verbose:
+								print(f"             Kept per-head attention weights: {attn_weights.shape}")
+		if verbose:
+				print(f"[4. Attention] Output from attention mechanism: {attn_output.shape}")
 
-        if verbose:
-            print(f"[Dimensions] tgt_len={tgt_len}, src_len={src_len}, bsz={bsz}, embed_dim={embed_dim}, num_heads={num_heads}, head_dim={head_dim}")
+		# ---------------------------------------------------------------------
+		# 5. out_proj in Activation Space
+		# ---------------------------------------------------------------------
+		# Reshape [B, num_heads, L, head_dim] -> [L, B, embed_dim]
+		attn_output = attn_output.permute(2, 0, 1, 3).contiguous().view(tgt_len, bsz, embed_dim)
+		if verbose:
+				print(f"[5. Reshape] Reshaped attention output to [L, B, embed_dim]: {attn_output.shape}")
+		# self.out_proj was already replaced by LoRALinear instance during peft injection
+		if verbose:
+				print(f"[5. out_proj] Applying out_proj adapter: {type(self.out_proj).__name__}")
+		attn_output = self.out_proj(attn_output)
+		if verbose:
+				print(f"             Output from out_proj: {attn_output.shape}")
 
-        # ---------------------------------------------------------------------
-        # 2. in_proj in Activation Space (Supports LoRA, VeRA, DoRA, etc.)
-        # ---------------------------------------------------------------------
-        in_proj_adapter = getattr(self, f"{method_name}_in_proj", None)
-        if in_proj_adapter is not None:
-            if verbose:
-                print(f"[2. in_proj] Found adapter: {type(in_proj_adapter).__name__}. Applying in activation space.")
-                print(f"             Input to adapter: {query.shape}")
-            # Runs adapter.forward -> includes dropout and activation-space rank path
-            qkv = in_proj_adapter(query)
-            if verbose:
-                print(f"             Output from adapter (QKV combined): {qkv.shape}")
-        else:
-            if verbose:
-                print(f"[2. in_proj] No adapter found. Using standard torch.nn.functional.linear with frozen base weights.")
-            qkv = torch.nn.functional.linear(query, self.in_proj_weight, self.in_proj_bias)
-            if verbose:
-                print(f"             Output from torch.nn.functional.linear (QKV combined): {qkv.shape}")
-
-        # Split Q, K, V and reshape for SDPA: [B, num_heads, L, head_dim]
-        q, k, v = qkv.chunk(3, dim=-1)
-        
-        # FIXED: Use permute instead of transpose+view to avoid contiguity crashes
-        q = q.view(tgt_len, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
-        k = k.view(src_len, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
-        v = v.view(src_len, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
-        
-        if verbose:
-            print(f"[2. Reshape] Split and reshaped Q, K, V for SDPA.")
-            print(f"             Q shape: {q.shape}")
-            print(f"             K shape: {k.shape}")
-            print(f"             V shape: {v.shape}")
-
-        # ---------------------------------------------------------------------
-        # 3. Resolve Masks (Merge key_padding_mask into attn_mask)
-        # ---------------------------------------------------------------------
-        # Format attn_mask to float if boolean
-        if attn_mask is not None and attn_mask.dtype == torch.bool:
-            if verbose:
-                print(f"[3. Masks] Converting boolean attn_mask to float additive mask (-inf for True).")
-            new_attn_mask = torch.zeros_like(attn_mask, dtype=q.dtype)
-            new_attn_mask.masked_fill_(attn_mask, float("-inf"))
-            attn_mask = new_attn_mask
-
-        # Broadcast and combine key_padding_mask [B, S] -> [B, 1, 1, S]
-        if key_padding_mask is not None:
-            if verbose:
-                print(f"[3. Masks] Processing key_padding_mask of shape {key_padding_mask.shape}.")
-            if key_padding_mask.dtype == torch.bool:
-                kpm_float = torch.zeros((bsz, 1, 1, src_len), dtype=q.dtype, device=query.device)
-                kpm_float.masked_fill_(key_padding_mask.view(bsz, 1, 1, src_len), float("-inf"))
-            else:
-                kpm_float = key_padding_mask.view(bsz, 1, 1, src_len).to(dtype=q.dtype)
-
-            attn_mask = kpm_float if attn_mask is None else (attn_mask + kpm_float)
-            if verbose:
-                print(f"           Merged key_padding_mask into attn_mask. Final attn_mask shape: {attn_mask.shape if attn_mask is not None else None}")
-
-        dropout_p = self.dropout if self.training else 0.0
-        if verbose:
-            print(f"[Attention] Dropout probability: {dropout_p}")
-
-        # ---------------------------------------------------------------------
-        # 4. Attention Computation: Fast Path vs. Weights Path
-        # ---------------------------------------------------------------------
-        attn_weights = None
-
-        if not need_weights:
-            # FIXED: Handle PyTorch SDPA restriction on is_causal + attn_mask
-            if is_causal and attn_mask is not None:
-                if verbose:
-                    print(f"[4. Attention] Detected both is_causal=True and attn_mask. Merging causal mask into attn_mask to bypass SDPA restriction.")
-                causal_mask = torch.zeros((tgt_len, src_len), dtype=q.dtype, device=query.device)
-                causal_mask.masked_fill_(
-                    torch.ones((tgt_len, src_len), dtype=torch.bool, device=query.device).triu(diagonal=1), 
-                    float("-inf")
-                )
-                attn_mask = attn_mask + causal_mask
-                is_causal = False
-
-            if verbose:
-                print(f"[4. Attention] FAST PATH: Using torch.nn.functional.scaled_dot_product_attention (FlashAttention/MemEfficient).")
-            # FAST PATH: Fused FlashAttention / Memory-Efficient SDPA
-            attn_output = torch.nn.functional.scaled_dot_product_attention(
-                q, k, v,
-                attn_mask=attn_mask,
-                dropout_p=dropout_p,
-                is_causal=is_causal
-            )  # [B, num_heads, L, head_dim]
-        else:
-            if verbose:
-                print(f"[4. Attention] WEIGHTS PATH: Explicit matrix computation to return attention maps.")
-            # FALLBACK PATH: Explicit matrix computation to return attention maps
-            scale_factor = 1.0 / math.sqrt(head_dim)
-            attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale_factor  # [B, num_heads, L, S]
-            if verbose:
-                print(f"             Computed attention scores: {attn_scores.shape}")
-
-            if is_causal:
-                if verbose:
-                    print(f"             Applying causal mask (lower triangular).")
-                causal_mask = torch.ones((tgt_len, src_len), dtype=torch.bool, device=query.device).tril()
-                attn_scores.masked_fill_(~causal_mask, float("-inf"))
-
-            if attn_mask is not None:
-                if verbose:
-                    print(f"             Applying additive attn_mask.")
-                attn_scores = attn_scores + attn_mask
-
-            attn_probs = torch.nn.functional.softmax(attn_scores, dim=-1)
-            attn_probs = torch.nn.functional.dropout(attn_probs, p=dropout_p, training=self.training)
-            if verbose:
-                print(f"             Applied softmax and dropout. Attention probs shape: {attn_probs.shape}")
-
-            attn_output = torch.matmul(attn_probs, v)  # [B, num_heads, L, head_dim]
-
-            if average_attn_weights:
-                attn_weights = attn_probs.mean(dim=1)  # [B, L, S]
-                if verbose:
-                    print(f"             Averaged attention weights across heads: {attn_weights.shape}")
-            else:
-                attn_weights = attn_probs               # [B, num_heads, L, S]
-                if verbose:
-                    print(f"             Kept per-head attention weights: {attn_weights.shape}")
-
-        if verbose:
-            print(f"[4. Attention] Output from attention mechanism: {attn_output.shape}")
-
-        # ---------------------------------------------------------------------
-        # 5. out_proj in Activation Space
-        # ---------------------------------------------------------------------
-        # Reshape [B, num_heads, L, head_dim] -> [L, B, embed_dim]
-        attn_output = attn_output.permute(2, 0, 1, 3).contiguous().view(tgt_len, bsz, embed_dim)
-        if verbose:
-            print(f"[5. Reshape] Reshaped attention output to [L, B, embed_dim]: {attn_output.shape}")
-
-        # self.out_proj was already replaced by LoRALinear instance during peft injection
-        if verbose:
-            print(f"[5. out_proj] Applying out_proj adapter: {type(self.out_proj).__name__}")
-        attn_output = self.out_proj(attn_output)
-        if verbose:
-            print(f"             Output from out_proj: {attn_output.shape}")
-
-        # ---------------------------------------------------------------------
-        # 6. Restore Original Input Layout (batch_first & unbatched)
-        # ---------------------------------------------------------------------
-        if batch_first:
-            if verbose:
-                print(f"[6. Shape Restore] batch_first=True. Transposing output back to [B, L, D].")
-            attn_output = attn_output.transpose(0, 1)  # [B, L, D]
-
-        if not is_batched:
-            if verbose:
-                print(f"[6. Shape Restore] Unbatched input was used. Squeezing batch dimension from output.")
-            attn_output = attn_output.squeeze(0 if batch_first else 1)  # [L, D]
-            if attn_weights is not None:
-                attn_weights = attn_weights.squeeze(0)
-
-        if verbose:
-            print(f"[Final Output] attn_output shape: {attn_output.shape}, dtype: {attn_output.dtype}")
-            if attn_weights is not None:
-                print(f"[Final Output] attn_weights shape: {attn_weights.shape}")
-            print(f"{'='*20} MHA FORWARD END {'='*20}\n")
-
-        return attn_output, attn_weights
-
-    mha_module.forward = types.MethodType(forward, mha_module)
+		# ---------------------------------------------------------------------
+		# 6. Restore Original Input Layout (batch_first & unbatched)
+		# ---------------------------------------------------------------------
+		if batch_first:
+				if verbose:
+						print(f"[6. Shape Restore] batch_first=True. Transposing output back to [B, L, D].")
+				attn_output = attn_output.transpose(0, 1)  # [B, L, D]
+		if not is_batched:
+				if verbose:
+						print(f"[6. Shape Restore] Unbatched input was used. Squeezing batch dimension from output.")
+				attn_output = attn_output.squeeze(0 if batch_first else 1)  # [L, D]
+				if attn_weights is not None:
+						attn_weights = attn_weights.squeeze(0)
+		if verbose:
+				print(f"[Final Output] attn_output shape: {attn_output.shape}, dtype: {attn_output.dtype}")
+				if attn_weights is not None:
+						print(f"[Final Output] attn_weights shape: {attn_weights.shape}")
+				print(f"{'='*20} MHA FORWARD END {'='*20}\n")
+		return attn_output, attn_weights
+	
+	mha_module.forward = types.MethodType(forward, mha_module)
 
 def get_injected_peft_clip(
 	clip_model: torch.nn.Module,
@@ -1942,6 +1928,7 @@ def get_injected_peft_clip(
 	compute_dtype: torch.dtype=torch.float16,
 	verbose: bool=False,
 ):
+
 	"""
 	Apply LoRA, rsLoRA, LoRA+, DoRA, VeRA or (IA)³ to a CLIP model.
 	
