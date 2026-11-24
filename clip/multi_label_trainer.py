@@ -225,8 +225,8 @@ def zero_shot_multi_label(
 	# ── Zero-shot checkpoint: base model state, no optimisation performed ──
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_"
 		f"{model_arch}_"
+		f"{mode}_"
 		f"bs_{train_loader.batch_size}_"
 		f"pw_{pw_mode}_"
 		f"temp_{temperature}.pth",
@@ -476,12 +476,12 @@ def probe_multi_label(
 
 	mdl_fpth = os.path.join(
 		results_dir,
+		f"{model_arch}_"
 		f"{mode}_"
 		# f"{probe.probe_type}_" # LinearProbe or MLPProbe
-		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
 		f"mep_{minimum_epochs}_"
@@ -920,7 +920,7 @@ def probe_multi_label(
 		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}"
 	)
@@ -1170,12 +1170,12 @@ def full_finetune_multi_label(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_"
 		f"{model_arch}_"
+		f"{mode}_"
 		f"ieps_{num_epochs}_"
 		f"do_{dropout_val}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
 		f"mep_{minimum_epochs}_"
@@ -1433,7 +1433,7 @@ def full_finetune_multi_label(
 		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
 		f"do_{dropout_val}"
@@ -1702,8 +1702,8 @@ def lora_finetune_multi_label(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_"
 		f"{model_arch}_"
+		f"{mode}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
 		f"lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}_"
 		f"temp_{temperature}_bs_{train_loader.batch_size}_"
@@ -1944,7 +1944,8 @@ def lora_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{model_arch}_ep_{actual_trained_epochs}_"
+		# f"{model_arch}_"
+		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}"
 	)
@@ -2305,9 +2306,9 @@ def lora_plus_finetune_multi_label(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_"
-		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
 		f"{model_arch}_"
+		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
+		f"{mode}_"
 		f"ieps_{num_epochs}_"
 		f"lr_A_{lora_A_lr:.1e}_"
 		f"wd_A_{lora_A_wd:.1e}_"
@@ -3003,8 +3004,8 @@ def rslora_finetune_multi_label(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_"
 		f"{model_arch}_"
+		f"{mode}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
@@ -3284,7 +3285,8 @@ def rslora_finetune_multi_label(
 
 	file_base_name = (
 		f"{mode}_"
-		f"{model_arch}_ep_{actual_trained_epochs}_"
+		# f"{model_arch}_"
+		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
 		f"lor_{lora_rank}_"
@@ -3573,12 +3575,12 @@ def dora_finetune_multi_label(
 	# Model checkpoint path
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_"
-		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
 		f"{model_arch}_"
+		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
+		f"{mode}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"bs_{train_loader.batch_size}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
@@ -3852,7 +3854,7 @@ def dora_finetune_multi_label(
 		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"bs_{train_loader.batch_size}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
@@ -4170,12 +4172,12 @@ def vera_finetune_multi_label(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_"
-		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
 		f"{model_arch}_"
+		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
+		f"{mode}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"bs_{train_loader.batch_size}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
@@ -4494,7 +4496,7 @@ def vera_finetune_multi_label(
 		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"bs_{train_loader.batch_size}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
@@ -4793,11 +4795,11 @@ def ia3_finetune_multi_label(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_"
 		f"{model_arch}_"
+		f"{mode}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
 		f"mep_{minimum_epochs}_"
@@ -5067,7 +5069,7 @@ def ia3_finetune_multi_label(
 		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}"
 	)
@@ -5346,8 +5348,8 @@ def clip_adapter_finetune_multi_label(
 	# Checkpoint path
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{clip_adapter_method}_"
 		f"{model_arch}_"
+		f"{clip_adapter_method}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
 		f"cbd_{bottleneck_dim}_act_{activation}_temp_{temperature}_"
@@ -6126,11 +6128,11 @@ def tip_adapter_finetune_multi_label(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{tip_adapter_method}_"
 		f"{model_arch}_"
+		f"{tip_adapter_method}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"bs_{train_loader.batch_size}_"
 		f"init_alpha_{initial_alpha}_"
 		f"init_beta_{initial_beta}_"
@@ -6536,7 +6538,7 @@ def tip_adapter_finetune_multi_label(
 		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"wd_{weight_decay}_"
 		f"bs_{train_loader.batch_size}_"
 		f"beta_{adapter_module.beta.item()}_"
 		f"alpha_{adapter_module.alpha.item()}_"

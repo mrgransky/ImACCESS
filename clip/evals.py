@@ -629,8 +629,6 @@ def compute_multilabel_mrr(
 # so a stale AP@K computed with the old (incorrect) denominator can never
 # be silently reused after this fix.
 
-METRIC_VERSION="debugging_metrics_v1"
-
 def compute_retrieval_metrics_from_similarity(
 	similarity_matrix: torch.Tensor,
 	query_labels: torch.Tensor,
@@ -683,10 +681,6 @@ def compute_retrieval_metrics_from_similarity(
 	undefined for them — scoring them as 0 would penalize the model for
 	an impossible task and bias the mean downward.
 
-	Zero versioning note: cache files are keyed with METRIC_VERSION so
-	that caches written under the old (incorrect) denominator or the old
-	I2T hit-rate-as-recall are never loaded here.
-
 	Critical fix vs. earlier versions (independent of the above): any
 	requested K exceeding the number of available candidates in a tier
 	(e.g. K=10 on a shared-rare tier with only 3 classes) is no longer
@@ -703,7 +697,7 @@ def compute_retrieval_metrics_from_similarity(
 			mode: "Image-to-Text" or "Text-to-Image"
 			class_counts: Number of samples per class (for single-label recall / T2I R_q)
 			cache_dir: Cache directory
-			cache_key: Cache identifier (will be suffixed with METRIC_VERSION)
+			cache_key: Cache identifier
 			is_training: Skip caching if True
 			verbose: Print progress + diagnostics
 			chunk_size: Chunk size for memory optimization
@@ -729,7 +723,6 @@ def compute_retrieval_metrics_from_similarity(
 	if verbose:
 		print("-" * 120)
 		print(f"[{mode.upper()} RETRIEVAL METRICS]")
-		print(f"  ├─ METRIC_VERSION={METRIC_VERSION}")
 		print(f"  ├─ similarity_matrix: {tuple(similarity_matrix.shape)} [num_queries x num_candidates]")
 		print(f"  ├─ dtype/device: {similarity_matrix.dtype} / {similarity_matrix.device}")
 		print(f"  ├─ Top-K requested: {topK_values} | max_effective_K: {max_effective_K}")
@@ -823,7 +816,7 @@ def compute_retrieval_metrics_from_similarity(
 	# ── Cache — versioned so old (incorrect-denominator) caches are never reused ──
 	cache_file = None
 	if cache_dir and cache_key and not is_training:
-		cache_file = os.path.join(cache_dir, f"{cache_key}_{METRIC_VERSION}_retrieval_metrics.json")
+		cache_file = os.path.join(cache_dir, f"{cache_key}_retrieval_metrics.json")
 		if os.path.exists(cache_file):
 			try:
 				if verbose:

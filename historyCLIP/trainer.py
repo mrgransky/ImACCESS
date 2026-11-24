@@ -75,7 +75,7 @@ def main():
 	parser.add_argument('--strategy', '-stg', type=str, choices=['full', 'lora', 'rslora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter', 'baseline'], default=None, help='Strategy')
 	parser.add_argument('--epochs', '-ep', type=int, default=100, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=4, help='Batch size for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-5, help='learning rate [def: 5e-5]')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='learning rate [def: 1e-4]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-2]')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
@@ -110,14 +110,15 @@ def main():
 	parser.add_argument('--total_num_phases', '-tnp', type=int, default=None, help='Total number of phases (used if strategy=progressive)')
 
 	# Adapter-based FT
-	parser.add_argument('--adapter_method', '-am', type=str, choices=['clip_adapter_v', 'clip_adapter_t', 'clip_adapter_vt', 'tip_adapter', 'tip_adapter_f'], default=None, help='Adapter method (used if strategy=adapter)')
+	parser.add_argument('--adapter_method', '-am', type=str, choices=['clip_adapter_v', 'clip_adapter_t', 'clip_adapter_vt', 'tip_adapter', 'tip_adapter_f'], default=None, help='Adapter-based PEFT method (used if strategy=adapter)')
 
 	# clip-adapter-v, clip-adapter-t, clip-adapter-vt:
-	parser.add_argument('--bottleneck_dim', type=int, default=256, help='Bottleneck dimension (used if strategy=adapter)')
+	parser.add_argument('--bottleneck_dim', type=int, default=None, help='Bottleneck dimension (used if strategy=adapter and adapter_method=clip_adapter_*)')
 
-	parser.add_argument('--initial_beta', type=float, default=5.5, help='Tip-Adapter initial sharpness beta (Zhang et al., ECCV 2022 default: 5.5)')
-	parser.add_argument('--initial_alpha', type=float, default=1.0, help='Tip-Adapter initial residual alpha (Zhang et al., ECCV 2022 default: 1.0)')
-	parser.add_argument('--support_shots', type=int, default=16, help='Target support shots per class for Tip-Adapter cache')
+	# tip-adapter, tip-adapter-f:
+	parser.add_argument('--initial_beta', type=float, default=None, help='Tip-Adapter initial sharpness beta (used if strategy=adapter and adapter_method=tip_adapter*)')
+	parser.add_argument('--initial_alpha', type=float, default=None, help='Tip-Adapter initial residual alpha (used if strategy=adapter and adapter_method=tip_adapter*)')
+	parser.add_argument('--support_shots', type=int, default=None, help='Target support shots per class for Tip-Adapter cache (used if strategy=adapter and adapter_method=tip_adapter*)')
 
 	# Baselines
 	parser.add_argument('--baseline_method', '-bm', type=str, choices=['zero_shot', 'probe'], default=None, help='Baseline method')
@@ -150,6 +151,12 @@ def main():
 
 	if args.strategy == "adapter":
 		assert args.adapter_method is not None, "adapter_method must be specified for adapter-based finetuning (example: -am clip_adapter_v)"
+		if args.adapter_method.startswith("clip_adapter"):
+			assert args.bottleneck_dim is not None, "bottleneck_dim must be specified for CLIP-Adapter methods (example: --bottleneck_dim 256)"
+		elif args.adapter_method.startswith("tip_adapter"):
+			assert args.initial_beta is not None, "initial_beta must be specified for Tip-Adapter methods (example: --initial_beta 5.5)"
+			assert args.initial_alpha is not None, "initial_alpha must be specified for Tip-Adapter methods (example: --initial_alpha 1.0)"
+			assert args.support_shots is not None, "support_shots must be specified for Tip-Adapter methods (example: --support_shots 16)"
 
 	try:
 		if args.log_dir:
