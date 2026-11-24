@@ -123,6 +123,9 @@ def main():
 	# Baselines
 	parser.add_argument('--baseline_method', '-bm', type=str, choices=['zero_shot', 'probe'], default=None, help='Baseline method')
 
+	# Isolated output directory override (e.g., for LR grid search; leaves production outputs/ untouched)
+	parser.add_argument('--output_dir', type=str, default=None, help='Optional isolated output directory for checkpoints, plots, and standalone run_metrics.json')
+
 	args, unknown = parser.parse_known_args()
 	if isinstance(args.device, str):
 		args.device = torch.device(args.device)
@@ -203,13 +206,16 @@ def main():
 		OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
 		os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
-		# RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}") # multi_label
-		RESULT_DIRECTORY = os.path.join(
-			OUTPUT_DIRECTORY,
-			f"{args.column}",
-			f"seed_{args.seed}"
-		) # ex) multimodal_canonical_labels
+		if args.output_dir:
+			RESULT_DIRECTORY = args.output_dir
+		else:
+			RESULT_DIRECTORY = os.path.join(
+				OUTPUT_DIRECTORY,
+				f"{args.column}",
+				f"seed_{args.seed}"
+			) # ex) multimodal_canonical_labels
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
+		print(f">> Result directory: {RESULT_DIRECTORY} (isolated={bool(args.output_dir)})")
 
 		tier_spec_path = os.path.join(OUTPUT_DIRECTORY, "shared_vocab_tier_spec.json")
 		if not os.path.exists(tier_spec_path):
@@ -278,75 +284,99 @@ def main():
 			}
 		}
 
-		best_model_result = finetune_functions[dataset_type][args.strategy](
-			model=model,
-			train_loader=train_loader,
-			validation_loader=validation_loader,
-			num_epochs=args.epochs,
-			learning_rate=args.learning_rate,
-			weight_decay=args.weight_decay,
-			device=args.device,
-			results_dir=RESULT_DIRECTORY,
-			patience=args.patience,
-			min_delta=args.minimum_delta,
-			cumulative_delta=args.cumulative_delta,
-			minimum_epochs=args.minimum_epochs,
-			volatility_threshold=args.volatility_threshold,
-			slope_threshold=args.slope_threshold,
-			pairwise_imp_threshold=args.pairwise_imp_threshold,
-			topk_values=args.topK_values,
-			print_every=args.print_every,
-			tier_spec_path=tier_spec_path,
-			verbose=args.verbose,
-			**(
-					{
-						'lora_rank': args.lora_rank,
-						'lora_alpha': args.lora_alpha,
-						'lora_dropout': args.lora_dropout
-					} if args.strategy in LORA_FAMILY_STRATEGIES else {}
-				),
-			**(
-					{
-						'min_phases_before_stopping': args.min_phases_before_stopping,
-						'min_epochs_per_phase': args.min_epochs_per_phase,
-						'total_num_phases': args.total_num_phases,
-					} if args.strategy == 'progressive' else {}
-					),
-			**(
-					{
-						'probe_dropout': args.probe_dropout,
-						'probe_temperature': args.probe_temperature,
-					} if args.strategy == 'probe' else {}
-				),
-			**(
-					{
-						'lora_plus_lambda': args.lora_plus_lambda,
-					} if args.strategy == 'lora_plus' else {}
-				),
-			**(
-					{
-						'clip_adapter_method': args.adapter_method,
-						'bottleneck_dim': args.bottleneck_dim,
-						'activation': 'relu',
-					} if args.strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('clip_adapter') else {}
-				),
-			**(
-					{
-						'tip_adapter_method': args.adapter_method,
-						'initial_beta': args.initial_beta,
-						'initial_alpha': args.initial_alpha,
-						'support_shots': args.support_shots,
-					} if args.strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('tip_adapter') else {}
-				),
-		)
-		
-		# Reconstruct the original strategy name for storage
+		# Reconstruct the original strategy name early so isolated error reporting knows it
 		if args.strategy == 'adapter' and args.adapter_method:
 			strategy_name = args.adapter_method  # e.g., 'clip_adapter_v', 'tip_adapter_f'
 		elif args.strategy == 'baseline' and args.baseline_method:
 			strategy_name = args.baseline_method  # e.g., 'zero_shot', 'probe'
 		else:
 			strategy_name = args.strategy  # e.g., 'lora', 'full', 'dora'
+
+		run_t0 = time.time()
+		try:
+			best_model_result = finetune_functions[dataset_type][args.strategy](
+				model=model,
+				train_loader=train_loader,
+				validation_loader=validation_loader,
+				num_epochs=args.epochs,
+				learning_rate=args.learning_rate,
+				weight_decay=args.weight_decay,
+				device=args.device,
+				results_dir=RESULT_DIRECTORY,
+				patience=args.patience,
+				min_delta=args.minimum_delta,
+				cumulative_delta=args.cumulative_delta,
+				minimum_epochs=args.minimum_epochs,
+				volatility_threshold=args.volatility_threshold,
+				slope_threshold=args.slope_threshold,
+				pairwise_imp_threshold=args.pairwise_imp_threshold,
+				topk_values=args.topK_values,
+				print_every=args.print_every,
+				tier_spec_path=tier_spec_path,
+				verbose=args.verbose,
+				**(
+						{
+							'lora_rank': args.lora_rank,
+							'lora_alpha': args.lora_alpha,
+							'lora_dropout': args.lora_dropout
+						} if args.strategy in LORA_FAMILY_STRATEGIES else {}
+					),
+				**(
+						{
+							'min_phases_before_stopping': args.min_phases_before_stopping,
+							'min_epochs_per_phase': args.min_epochs_per_phase,
+							'total_num_phases': args.total_num_phases,
+						} if args.strategy == 'progressive' else {}
+						),
+				**(
+						{
+							'probe_dropout': args.probe_dropout,
+							'probe_temperature': args.probe_temperature,
+						} if args.strategy == 'probe' else {}
+					),
+				**(
+						{
+							'lora_plus_lambda': args.lora_plus_lambda,
+						} if args.strategy == 'lora_plus' else {}
+					),
+				**(
+						{
+							'clip_adapter_method': args.adapter_method,
+							'bottleneck_dim': args.bottleneck_dim,
+							'activation': 'relu',
+						} if args.strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('clip_adapter') else {}
+					),
+				**(
+						{
+							'tip_adapter_method': args.adapter_method,
+							'initial_beta': args.initial_beta,
+							'initial_alpha': args.initial_alpha,
+							'support_shots': args.support_shots,
+						} if args.strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('tip_adapter') else {}
+					),
+			)
+		except Exception as exc:
+			if args.output_dir:
+				err_path = os.path.join(RESULT_DIRECTORY, "run_metrics.json")
+				with open(err_path, "w") as ef:
+					json.dump(
+						{
+							"status": "failed",
+							"error": f"{type(exc).__name__}: {exc}",
+							"strategy": strategy_name,
+							"dataset": dataset_name,
+							"architecture": args.model_architecture,
+							"column": args.column,
+							"seed": args.seed,
+							"learning_rate": args.learning_rate,
+							"elapsed_sec": round(time.time() - run_t0, 2),
+						},
+						ef,
+						indent=2,
+					)
+				print(f"[ISOLATED RUN FAILED] Recorded failure payload → {err_path}")
+			raise
+		run_elapsed_sec = round(time.time() - run_t0, 2)
 
 		# ---------------------------------------------------------
 		# Collect Strategy-Specific Hyperparameters
@@ -408,15 +438,39 @@ def main():
 				}
 			)
 
-		save_tiered_retrieval_metrics(
-			best_model_result=best_model_result,
-			strategy=strategy_name,
-			dataset_directory=DATASET_DIRECTORY,
-			column=args.column,
-			seed=args.seed,
-			strategy_hyperparams=strategy_hyperparams,
-			verbose=args.verbose,
-		)
+		if args.output_dir:
+			# Isolated mode (e.g., LR grid search): write a self-contained per-run JSON
+			# without touching production retrieval_metrics_accumulated.json or seed_*_performance.json
+			per_k = extract_per_k_metrics(best_model_result, tier_key="tiered")
+			shared_per_k = extract_per_k_metrics(best_model_result, tier_key="shared_tiered")
+			run_payload = {
+				"status": "ok",
+				"strategy": strategy_name,
+				"dataset": dataset_name,
+				"architecture": args.model_architecture,
+				"column": args.column,
+				"seed": args.seed,
+				"learning_rate": args.learning_rate,
+				"elapsed_sec": run_elapsed_sec,
+				"model_loaded_from": best_model_result.get("model_loaded_from") if isinstance(best_model_result, dict) else None,
+				"hyperparameters": strategy_hyperparams,
+				"standard": per_k,
+				"shared": shared_per_k,
+			}
+			run_json_path = os.path.join(RESULT_DIRECTORY, "run_metrics.json")
+			with open(run_json_path, "w") as rf:
+				json.dump(run_payload, rf, indent=2)
+			print(f"\n[ISOLATED METRICS] Saved standalone run metrics → {run_json_path}")
+		else:
+			save_tiered_retrieval_metrics(
+				best_model_result=best_model_result,
+				strategy=strategy_name,
+				dataset_directory=DATASET_DIRECTORY,
+				column=args.column,
+				seed=args.seed,
+				strategy_hyperparams=strategy_hyperparams,
+				verbose=args.verbose,
+			)
 
 		clean_cache(
 			directory=RESULT_DIRECTORY, 
