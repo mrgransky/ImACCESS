@@ -85,6 +85,7 @@ echo "MLM: $MLM_MODEL"
 echo "[LLM] batch sizes: ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} max generated tokens: $LLM_MAX_GENERATED_TOKENS"
 echo "[VLM] batch sizes: ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} max generated tokens: $VLM_MAX_GENERATED_TOKENS"
 echo "CLIP: $CLIP_MODEL"
+echo "DIGIT FILTERING: $DIGIT_FILTERING"
 
 python -u gt_kws_multimodal.py \
 	--csv_file $CSV_FILE \
