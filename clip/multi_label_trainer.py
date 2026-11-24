@@ -917,7 +917,7 @@ def probe_multi_label(
 		f"{mode}_"
 		# f"{probe.probe_type}_"
 		# f"{model_name}_"
-		f"{model_arch}_"
+		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
@@ -1430,7 +1430,7 @@ def full_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{model_arch}_"
+		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
@@ -2167,7 +2167,8 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ Unassigned params: {len(ungrouped)} tensors")
 		print(f"  └─ LR multiplier (λ): {lora_plus_lambda}")
 	
-	# Optimizer with differential learning rates (Hayou et al., ICML 2024: symmetric weight decay on A and B)
+	# Optimizer with differential learning rates 
+	# (Hayou et al., ICML 2024: symmetric weight decay on A and B)
 	lora_A_lr = learning_rate
 	lora_A_wd = weight_decay
 
@@ -2722,7 +2723,7 @@ def lora_plus_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{model_arch}_"
+		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_A_{lora_A_lr:.1e}_"
 		f"wd_A_{lora_A_wd:.1e}_"
@@ -3848,7 +3849,7 @@ def dora_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{model_arch}_"
+		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
@@ -4490,7 +4491,7 @@ def vera_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{model_arch}_"
+		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
@@ -5063,7 +5064,7 @@ def ia3_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{model_arch}_"
+		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
@@ -5655,7 +5656,7 @@ def clip_adapter_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{clip_adapter_method}_"
-		f"{model_arch}_"
+		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_"
 		f"cbd_{bottleneck_dim}_act_{activation}_temp_{temperature}"
@@ -6223,7 +6224,7 @@ def tip_adapter_finetune_multi_label(
 
 		file_base_name = (
 			f"{tip_adapter_method}_"
-			f"{model_arch}_"
+			# f"{model_arch}_"
 			f"training_free_"
 			f"bs_{train_loader.batch_size}_"
 			f"beta_{best_beta}_"
@@ -6532,7 +6533,7 @@ def tip_adapter_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{tip_adapter_method}_"
-		f"{model_arch}_"
+		# f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
