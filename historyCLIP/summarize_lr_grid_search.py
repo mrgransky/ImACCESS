@@ -43,6 +43,9 @@ DEFAULT_LRS = [
 	"5.0e-04",
 	"1.0e-03",
 	"5.0e-03",
+	"1.0e-02",
+	"2.0e-02",
+	"5.0e-02",
 ]
 
 
@@ -204,12 +207,13 @@ def main():
 		]
 		winners[strat] = max(valid_recs, key=lambda r: r["score"]) if valid_recs else None
 
-	# 2. Print 10 x 6 Composite Score Matrix
-	print("\n" + "=" * 102)
+	# 2. Print Composite Score Matrix
+	header = f"{'Strategy':<16} | " + " | ".join(f"{lr_s:^11}" for lr_s in args.lrs)
+	banner_w = max(102, len(header))
+	print("\n" + "=" * banner_w)
 	print(f"LR GRID SEARCH MATRIX — Composite = 0.5*(I2T + T2I) mAP@{args.k} [{args.protocol}]")
 	print(f"Sweep root: {args.sweep_dir}")
-	print("=" * 102)
-	header = f"{'Strategy':<16} | " + " | ".join(f"{lr_s:^11}" for lr_s in args.lrs)
+	print("=" * banner_w)
 	print(header)
 	print("-" * len(header))
 

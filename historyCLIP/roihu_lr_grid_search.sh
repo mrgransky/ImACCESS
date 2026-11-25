@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=lr_grid_42
+#SBATCH --job-name=lr_grid9_42
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -12,14 +12,13 @@
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
 #SBATCH --time=1-12:00:00
-##SBATCH --array=0-59
-#SBATCH --array=34
+#SBATCH --array=0-89
 
 ##############################################################################
 # EQUAL-BUDGET LEARNING RATE GRID SEARCH (PILOT CALIBRATION)
 # ──────────────────────────────────────────────────────────────────────────
-# Runs a fair, shared 6-point log-spaced LR sweep across all 10 trainable
-# strategies on ONE representative calibration setting:
+# Runs a fair, shared 9-point log-spaced LR sweep (5e-6 .. 5e-2) across all
+# 10 trainable strategies on ONE representative calibration setting:
 #   - Dataset      : HISTORY_X4 (union of NA + EU + WWII + SMU)
 #   - Architecture : ViT-L/14@336px
 #   - Column       : multimodal_canonical_labels
@@ -30,27 +29,33 @@
 #   ${DATASET_DIR}/lr_grid_search/${ARCH_TAG}/${COLUMN}/seed_${SEED}/
 # so production outputs/ and retrieval_metrics_accumulated.json are untouched.
 #
-# ARRAY INDEXING SCHEME: 10 strategies × 6 LRs = 60 tasks (--array=0-59)
-#   strategy_index = SLURM_ARRAY_TASK_ID / 6   (0..9)
-#   lr_index       = SLURM_ARRAY_TASK_ID % 6   (0..5)
+# RESUME SAFETY:
+#   Completed runs with valid run_metrics.json (status=="ok") are skipped
+#   automatically unless FORCE_RERUN=1 is exported.
 #
-#   strategy 0  probe          :  0 –  5
-#   strategy 1  full           :  6 – 11
-#   strategy 2  lora           : 12 – 17
-#   strategy 3  lora_plus      : 18 – 23
-#   strategy 4  rslora         : 24 – 29
-#   strategy 5  dora           : 30 – 35
-#   strategy 6  vera           : 36 – 41
-#   strategy 7  ia3            : 42 – 47
-#   strategy 8  tip_adapter_f  : 48 – 53
-#   strategy 9  clip_adapter_v : 54 – 59
+# ARRAY INDEXING SCHEME: 10 strategies × 9 LRs = 90 tasks (--array=0-89)
+#   strategy_index = SLURM_ARRAY_TASK_ID / 9   (0..9)
+#   lr_index       = SLURM_ARRAY_TASK_ID % 9   (0..8)
+#
+#   strategy 0  probe          :  0 –  8   (upper-edge 1e-2..5e-2:  6– 8)
+#   strategy 1  full           :  9 – 17   (upper-edge 1e-2..5e-2: 15–17)
+#   strategy 2  lora           : 18 – 26   (upper-edge 1e-2..5e-2: 24–26)
+#   strategy 3  lora_plus      : 27 – 35   (upper-edge 1e-2..5e-2: 33–35)
+#   strategy 4  rslora         : 36 – 44   (upper-edge 1e-2..5e-2: 42–44)
+#   strategy 5  dora           : 45 – 53   (upper-edge 1e-2..5e-2: 51–53)
+#   strategy 6  vera           : 54 – 62   (upper-edge 1e-2..5e-2: 60–62)
+#   strategy 7  ia3            : 63 – 71   (upper-edge 1e-2..5e-2: 69–71)
+#   strategy 8  tip_adapter_f  : 72 – 80   (upper-edge 1e-2..5e-2: 78–80)
+#   strategy 9  clip_adapter_v : 81 – 89   (upper-edge 1e-2..5e-2: 87–89)
 #
 # HOW TO RUN:
-#   sbatch roihu_lr_grid_search.sh
+#   Full 90-task grid (skips already-completed cells unless FORCE_RERUN=1):
+#     $ sbatch roihu_lr_grid_search.sh
+#   Upper-edge 30-task extension only (when 5e-6..5e-3 already completed):
+#     $ sbatch --array=6-8,15-17,24-26,33-35,42-44,51-53,60-62,69-71,78-80,87-89 roihu_lr_grid_search.sh
 #
 # AFTER COMPLETION (runs in ~2s on login node):
-#   python summarize_lr_grid_search.py \
-#     --sweep_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/lr_grid_search/ViT-L-14-336px/multimodal_canonical_labels/seed_42
+# $ python summarize_lr_grid_search.py --sweep_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/lr_grid_search/ViT-L-14-336px/multimodal_canonical_labels/seed_42
 ##############################################################################
 
 set -euo pipefail
@@ -99,19 +104,19 @@ TIP_INITIAL_ALPHA="1.0"
 TIP_SUPPORT_SHOTS=16
 
 ##############################################################################
-# 2D SEARCH GRID: 10 TRAINABLE STRATEGIES × 6 LOG-SPACED LEARNING RATES
+# 2D SEARCH GRID: 10 TRAINABLE STRATEGIES × 9 LOG-SPACED LEARNING RATES
 ##############################################################################
 TRAINABLE_STRATEGIES=(
-	"probe"          # 0  : tasks  0– 5
-	"full"           # 1  : tasks  6–11
-	"lora"           # 2  : tasks 12–17
-	"lora_plus"      # 3  : tasks 18–23
-	"rslora"         # 4  : tasks 24–29
-	"dora"           # 5  : tasks 30–35
-	"vera"           # 6  : tasks 36–41
-	"ia3"            # 7  : tasks 42–47
-	"tip_adapter_f"  # 8  : tasks 48–53
-	"clip_adapter_v" # 9  : tasks 54–59
+	"probe"          # 0  : tasks  0– 8
+	"full"           # 1  : tasks  9–17
+	"lora"           # 2  : tasks 18–26
+	"lora_plus"      # 3  : tasks 27–35
+	"rslora"         # 4  : tasks 36–44
+	"dora"           # 5  : tasks 45–53
+	"vera"           # 6  : tasks 54–62
+	"ia3"            # 7  : tasks 63–71
+	"tip_adapter_f"  # 8  : tasks 72–80
+	"clip_adapter_v" # 9  : tasks 81–89
 )
 
 LR_GRID=(
@@ -121,6 +126,9 @@ LR_GRID=(
 	"5.0e-04"        # lr 3
 	"1.0e-03"        # lr 4
 	"5.0e-03"        # lr 5
+	"1.0e-02"        # lr 6
+	"2.0e-02"        # lr 7
+	"5.0e-02"        # lr 8
 )
 
 NUM_STRATEGIES=${#TRAINABLE_STRATEGIES[@]}
@@ -180,6 +188,16 @@ echo "WEIGHT_DECAY        : $WEIGHT_DECAY"
 echo "BATCH_SIZE          : $BATCH_SIZE"
 echo "ISOLATED OUTPUT_DIR : $RUN_OUT_DIR"
 echo "===================================="
+
+# Idempotent resume guard: skip cells that already finished cleanly unless FORCE_RERUN=1
+FORCE_RERUN="${FORCE_RERUN:-0}"
+METRICS_JSON="${RUN_OUT_DIR}/run_metrics.json"
+if [ "$FORCE_RERUN" != "1" ] && [ -f "$METRICS_JSON" ]; then
+	if python -c "import json, sys; d = json.load(open(sys.argv[1])); sys.exit(0 if d.get('status') == 'ok' else 1)" "$METRICS_JSON" 2>/dev/null; then
+		echo "[SKIP] Completed run already exists: $METRICS_JSON (export FORCE_RERUN=1 to re-run)"
+		exit 0
+	fi
+fi
 
 CMD="python -u trainer.py \
 	--metadata_csv              \"$METADATA_CSV\" \
