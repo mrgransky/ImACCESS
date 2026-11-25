@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=lr_grid9_42
+#SBATCH --job-name=lr_grid_search
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -11,7 +11,7 @@
 #SBATCH --mem=204G
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
-#SBATCH --time=1-12:00:00
+#SBATCH --time=0-12:00:00
 #SBATCH --array=0-89
 
 ##############################################################################

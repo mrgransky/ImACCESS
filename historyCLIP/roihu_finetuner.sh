@@ -259,8 +259,25 @@ BATCH_SIZES=(16 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 25)
 SEED="${SEED:-42}"
 
-LRS=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06) # orig
-# LRS=(5.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+# Per-strategy learning rates calibrated via isolated 9-point equal-budget LR grid search
+# (HISTORY_X4, ViT-L/14@336px, multimodal_canonical_labels, seed=42; grid 5e-6..5e-2).
+# Selection: 0.5*(I2T + T2I) mAP@10 [shared] for open-vocab strategies; I2T mAP@10 for probe.
+declare -A STRATEGY_LRS=(
+	["zero_shot"]="0.0"          # training-free baseline
+	["probe"]="5.0e-03"          # calibrated (I2T mAP@10 = 0.4413, interior)
+	["full"]="2.0e-05"           # calibrated (composite = 0.2865, interior)
+	["lora"]="5.0e-04"           # calibrated (composite = 0.2651, interior)
+	["lora_plus"]="1.0e-04"      # calibrated (composite = 0.2709, interior, lambda=4)
+	["rslora"]="5.0e-04"         # calibrated (composite = 0.2648, interior)
+	["dora"]="1.0e-04"           # calibrated (composite = 0.2630, interior)
+	["vera"]="1.0e-02"           # calibrated (composite = 0.2119, interior)
+	["ia3"]="1.0e-02"            # calibrated (composite = 0.1526, interior)
+	["tip_adapter_f"]="5.0e-02"  # calibrated (composite = 0.2111, flat plateau 5e-3..5e-2)
+	["clip_adapter_v"]="5.0e-03" # calibrated (composite = 0.1968, interior)
+	["clip_adapter_vt"]="5.0e-03"
+	["clip_adapter_t"]="5.0e-03"
+	["tip_adapter"]="0.0"        # training-free cache baseline
+)
 WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 EPOCHS=(100 100 150 150 150)
 
@@ -283,15 +300,11 @@ done
 RSLORA_ALPHA="8.0"
 
 # VeRA (Kopiczko et al., ICLR 2024): frozen shared matrices benefit from higher rank (256)
-# and ~10x higher learning rate than LoRA since only 1D scaling vectors (d, b) are trained.
 VERA_RANK=256
-VERA_LRS=(1.0e-03 5.0e-05 5.0e-05 5.0e-05 5.0e-05)
 
-# Adapter-based PEFT: 
-# CLIP-Adapter: Gao et al. IJCV 2023; 
-# Tip-Adapter-F: Zhang et al. ECCV 2022;
-# Backbone is completely frozen; lightweight bottleneck/cache-key parameters use higher LR (~1e-3).
-ADAPTER_LRS=(1.0e-03 1.0e-03 1.0e-03 1.0e-03 1.0e-03)
+# Adapter-based PEFT:
+# CLIP-Adapter: Gao et al. IJCV 2023;
+# Tip-Adapter-F: Zhang et al. ECCV 2022
 ADAPTER_BOTTLENECK_DIM=256
 TIP_INITIAL_BETA=5.5
 TIP_INITIAL_ALPHA=1.0
@@ -333,7 +346,8 @@ PAIRWISE_IMP_THRESHOLDS=(1e-4 1e-4 1e-4 1e-4 1e-4)
 ##############################################################################
 # RESOLVE STRATEGY, ARCHITECTURE, AND COLUMN FOR THIS JOB
 ##############################################################################
-strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
+strategy_orig="${FINETUNE_STRATEGIES[$strategy_index]}"
+strategy="$strategy_orig"
 architecture="${MODEL_ARCHITECTURES[$architecture_index]}"
 column="${COLUMNS[$column_index]}"
 
@@ -356,16 +370,17 @@ if [[ "$strategy" == "zero_shot" ]] || [[ "$strategy" == "probe" ]]; then
 	strategy="baseline"
 fi
 
-LEARNING_RATE=${LRS[$dataset_index]}
+if [[ -z "${STRATEGY_LRS[$strategy_orig]+x}" ]]; then
+	echo "Error: No calibrated learning rate defined in STRATEGY_LRS for strategy '$strategy_orig'" >&2
+	exit 1
+fi
+LEARNING_RATE="${STRATEGY_LRS[$strategy_orig]}"
 EFFECTIVE_LORA_RANK="${LORA_RANKS[$dataset_index]}"
 EFFECTIVE_LORA_ALPHA="${LORA_ALPHAS[$dataset_index]}"
 if [ "$strategy" = "rslora" ]; then
 	EFFECTIVE_LORA_ALPHA="$RSLORA_ALPHA"
 elif [ "$strategy" = "vera" ]; then
-	LEARNING_RATE="${VERA_LRS[$dataset_index]}"
 	EFFECTIVE_LORA_RANK="$VERA_RANK"
-elif [ "$strategy" = "adapter" ]; then
-	LEARNING_RATE="${ADAPTER_LRS[$dataset_index]}"
 fi
 
 ##############################################################################
