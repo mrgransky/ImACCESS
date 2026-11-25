@@ -6,13 +6,14 @@ Reads per-run `run_metrics.json` files from:
     <sweep_dir>/<strategy>/lr_<lr>/run_metrics.json
 
 Selection criterion (scale-invariant across cosine-similarity & logit-space PEFT heads):
-    Composite Score = 0.5 * (I2T mAP@10 [overall] + T2I mAP@10 [overall])
-on the `shared` evaluation protocol (falling back to `standard` if `shared` is absent).
+    - Open-vocabulary strategies (9): Composite = 0.5 * (I2T mAP@10 + T2I mAP@10)
+    - Closed-set Linear Probe (†)   : Unidirectional I2T mAP@10 (no open-vocabulary T2I)
+evaluated on the `shared` protocol (falling back to `standard` if `shared` is absent).
 
 Outputs written directly inside <sweep_dir>/:
     - optimal_lrs.json          : winning LR + full metrics per strategy
     - lr_grid_summary.csv       : flat table of all (strategy, lr) runs
-    - lr_sensitivity_curve.png  : 3-panel publication figure (Composite / I2T / T2I vs log LR)
+    - lr_sensitivity_curve.png  : 3-panel publication figure (Selection / I2T / T2I vs log LR)
 """
 
 import argparse
@@ -49,6 +50,26 @@ DEFAULT_LRS = [
 ]
 
 
+CLOSED_SET_STRATEGIES = {"probe"}
+
+
+def _harmonic_mean(a: float, b: float) -> float:
+	if math.isnan(a) or math.isnan(b):
+		return float("nan")
+	denom = a + b
+	return (2.0 * a * b / denom) if denom > 0.0 else 0.0
+
+
+def _json_num(val: float) -> Optional[float]:
+	return None if (val is None or (isinstance(val, float) and math.isnan(val))) else val
+
+
+def _csv_val(val):
+	if isinstance(val, float) and math.isnan(val):
+		return ""
+	return val
+
+
 def _get_metric(block: Optional[dict], direction: str, tier: str, metric: str, k: str) -> float:
 	if not isinstance(block, dict):
 		return float("nan")
@@ -70,6 +91,7 @@ def load_sweep_results(
 
 	for strat in strategies:
 		matrix[strat] = {}
+		is_closed_set = strat in CLOSED_SET_STRATEGIES
 		for lr_s in lr_strs:
 			run_json = os.path.join(sweep_dir, strat, f"lr_{lr_s}", "run_metrics.json")
 			rec = {
@@ -78,6 +100,7 @@ def load_sweep_results(
 				"lr": float(lr_s),
 				"status": "missing",
 				"score": float("nan"),
+				"harmonic_score": float("nan"),
 				"i2t_ovr": float("nan"),
 				"i2t_head": float("nan"),
 				"i2t_rare": float("nan"),
@@ -105,13 +128,22 @@ def load_sweep_results(
 						rec["i2t_ovr"] = _get_metric(block, "i2t", "overall", "mAP", k)
 						rec["i2t_head"] = _get_metric(block, "i2t", "head", "mAP", k)
 						rec["i2t_rare"] = _get_metric(block, "i2t", "rare", "mAP", k)
-						rec["t2i_ovr"] = _get_metric(block, "t2i", "overall", "mAP", k)
-						rec["t2i_head"] = _get_metric(block, "t2i", "head", "mAP", k)
-						rec["t2i_rare"] = _get_metric(block, "t2i", "rare", "mAP", k)
 						rec["i2t_rec"] = _get_metric(block, "i2t", "overall", "Recall", k)
-						rec["t2i_rec"] = _get_metric(block, "t2i", "overall", "Recall", k)
-						if not (math.isnan(rec["i2t_ovr"]) or math.isnan(rec["t2i_ovr"])):
-							rec["score"] = 0.5 * (rec["i2t_ovr"] + rec["t2i_ovr"])
+
+						if is_closed_set:
+							# Linear Probe is a unidirectional closed-set classifier:
+							# exclude non-open-vocabulary T2I and select strictly on I2T mAP@K.
+							if not math.isnan(rec["i2t_ovr"]):
+								rec["score"] = rec["i2t_ovr"]
+								rec["harmonic_score"] = rec["i2t_ovr"]
+						else:
+							rec["t2i_ovr"] = _get_metric(block, "t2i", "overall", "mAP", k)
+							rec["t2i_head"] = _get_metric(block, "t2i", "head", "mAP", k)
+							rec["t2i_rare"] = _get_metric(block, "t2i", "rare", "mAP", k)
+							rec["t2i_rec"] = _get_metric(block, "t2i", "overall", "Recall", k)
+							if not (math.isnan(rec["i2t_ovr"]) or math.isnan(rec["t2i_ovr"])):
+								rec["score"] = 0.5 * (rec["i2t_ovr"] + rec["t2i_ovr"])
+								rec["harmonic_score"] = _harmonic_mean(rec["i2t_ovr"], rec["t2i_ovr"])
 				except Exception as e:
 					rec["status"] = "corrupt"
 					rec["error"] = str(e)
@@ -141,14 +173,17 @@ def plot_lr_sensitivity(
 	lrs_float = [float(x) for x in lr_strs]
 	fig, axes = plt.subplots(1, 3, figsize=(18, 5.2), sharex=True)
 	panels = [
-		("score", f"Composite Score: 0.5·(I2T + T2I) mAP@{k} [{protocol}]"),
+		("score", f"Selection Score: 0.5·(I2T+T2I) / I2T† mAP@{k} [{protocol}]"),
 		("i2t_ovr", f"I2T Overall mAP@{k} [{protocol}]"),
-		("t2i_ovr", f"T2I Overall mAP@{k} [{protocol}]"),
+		("t2i_ovr", f"T2I Overall mAP@{k} [{protocol}] (open-vocab only)"),
 	]
 	cmap = plt.get_cmap("tab10")
 
 	for s_idx, strat in enumerate(strategies):
 		color = cmap(s_idx % 10)
+		is_closed_set = strat in CLOSED_SET_STRATEGIES
+		label = f"{strat}† (I2T only)" if is_closed_set else strat
+		linestyle = "--" if is_closed_set else "-"
 		for ax, (key, title) in zip(axes, panels):
 			xs, ys = [], []
 			for lr_s, lr_f in zip(lr_strs, lrs_float):
@@ -157,7 +192,7 @@ def plot_lr_sensitivity(
 					xs.append(lr_f)
 					ys.append(val)
 			if xs:
-				ax.plot(xs, ys, marker="o", linewidth=2.0, markersize=5, label=strat, color=color)
+				ax.plot(xs, ys, marker="o", linestyle=linestyle, linewidth=2.0, markersize=5, label=label, color=color)
 				best_i = max(range(len(ys)), key=lambda i: ys[i])
 				ax.scatter([xs[best_i]], [ys[best_i]], marker="*", s=160, color=color, edgecolors="black", zorder=5)
 			ax.set_xscale("log")
@@ -197,8 +232,9 @@ def main():
 		k=args.k,
 	)
 
-	# 1. Determine winner per strategy
+	# 1. Determine winner per strategy (plus Harmonic Mean robustness cross-check)
 	winners: Dict[str, Optional[dict]] = {}
+	harmonic_winners: Dict[str, Optional[dict]] = {}
 	for strat in args.strategies:
 		valid_recs = [
 			matrix[strat][lr_s]
@@ -206,12 +242,14 @@ def main():
 			if matrix[strat][lr_s]["status"] == "ok" and not math.isnan(matrix[strat][lr_s]["score"])
 		]
 		winners[strat] = max(valid_recs, key=lambda r: r["score"]) if valid_recs else None
+		h_recs = [r for r in valid_recs if not math.isnan(r["harmonic_score"])]
+		harmonic_winners[strat] = max(h_recs, key=lambda r: r["harmonic_score"]) if h_recs else None
 
-	# 2. Print Composite Score Matrix
+	# 2. Print Selection Score Matrix
 	header = f"{'Strategy':<16} | " + " | ".join(f"{lr_s:^11}" for lr_s in args.lrs)
 	banner_w = max(102, len(header))
 	print("\n" + "=" * banner_w)
-	print(f"LR GRID SEARCH MATRIX — Composite = 0.5*(I2T + T2I) mAP@{args.k} [{args.protocol}]")
+	print(f"LR GRID SEARCH MATRIX — Open-vocab: 0.5*(I2T + T2I) mAP@{args.k} | Closed-set†: I2T mAP@{args.k} [{args.protocol}]")
 	print(f"Sweep root: {args.sweep_dir}")
 	print("=" * banner_w)
 	print(header)
@@ -220,6 +258,7 @@ def main():
 	n_ok = n_fail = n_miss = 0
 	for strat in args.strategies:
 		best_lr = winners[strat]["lr_str"] if winners[strat] else None
+		disp_name = f"{strat}†" if strat in CLOSED_SET_STRATEGIES else strat
 		cells = []
 		for lr_s in args.lrs:
 			rec = matrix[strat][lr_s]
@@ -233,34 +272,41 @@ def main():
 			else:
 				n_fail += 1
 				cells.append(f"{rec['status'].upper():^11}")
-		print(f"{strat:<16} | " + " | ".join(cells))
+		print(f"{disp_name:<16} | " + " | ".join(cells))
 
 	print("-" * len(header))
 	print(f"Status summary: {n_ok} ok | {n_fail} failed/corrupt | {n_miss} missing  (total={len(rows)})")
+	print(f"† Linear Probe is a unidirectional closed-set classifier (no open-vocab T2I); scored strictly on I2T mAP@{args.k}.")
 
 	# 3. Print Detailed Winner Table + Boundary Warnings
-	print("\n" + "=" * 116)
-	print(f"OPTIMAL LEARNING RATES PER STRATEGY (Selection: 0.5*(I2T + T2I) mAP@{args.k} [{args.protocol}])")
-	print("=" * 116)
+	print("\n" + "=" * 118)
+	print(f"OPTIMAL LEARNING RATES PER STRATEGY (Open-vocab: 0.5*(I2T+T2I) mAP@{args.k} | Probe†: I2T mAP@{args.k} [{args.protocol}])")
+	print("=" * 118)
 	print(
 		f"{'Strategy':<15} | {'Best LR':>9} | {'Score':>7} | "
-		f"{'I2T mAP@10 (ovr/head/rare)':^27} | {'T2I mAP@10 (ovr/head/rare)':^27} | {'Boundary'}"
+		f"{f'I2T mAP@{args.k} (ovr/head/rare)':^27} | {f'T2I mAP@{args.k} (ovr/head/rare)':^27} | {'Boundary'}"
 	)
-	print("-" * 116)
+	print("-" * 118)
 
 	optimal_payload = {
 		"sweep_dir": args.sweep_dir,
 		"protocol": args.protocol,
-		"selection_metric": f"0.5 * (I2T_mAP@{args.k}_overall + T2I_mAP@{args.k}_overall)",
+		"selection_metric": (
+			f"0.5 * (I2T_mAP@{args.k}_overall + T2I_mAP@{args.k}_overall) for open-vocabulary strategies; "
+			f"I2T_mAP@{args.k}_overall for closed-set probe"
+		),
 		"lr_grid": args.lrs,
 		"optimal_lrs": {},
 		"details": {},
 	}
 
+	harmonic_diffs = []
 	for strat in args.strategies:
 		w = winners[strat]
+		is_closed_set = strat in CLOSED_SET_STRATEGIES
+		disp_name = f"{strat}†" if is_closed_set else strat
 		if w is None:
-			print(f"{strat:<15} | {'N/A':>9} | {'N/A':>7} | {'—':^27} | {'—':^27} | NO VALID RUNS")
+			print(f"{disp_name:<15} | {'N/A':>9} | {'N/A':>7} | {'—':^27} | {'—':^27} | NO VALID RUNS")
 			continue
 
 		edge_flag = "OK (interior)"
@@ -269,23 +315,42 @@ def main():
 		elif w["lr_str"] == args.lrs[-1]:
 			edge_flag = "⚠ HIGH EDGE (consider higher)"
 
+		i2t_str = f"{w['i2t_ovr']:7.4f} / {w['i2t_head']:7.4f} / {w['i2t_rare']:7.4f}"
+		t2i_str = f"{'---':^27}" if is_closed_set else f"{w['t2i_ovr']:7.4f} / {w['t2i_head']:7.4f} / {w['t2i_rare']:7.4f}"
+
 		print(
-			f"{strat:<15} | {w['lr_str']:>9} | {w['score']:7.4f} | "
-			f"{w['i2t_ovr']:7.4f} / {w['i2t_head']:7.4f} / {w['i2t_rare']:7.4f} | "
-			f"{w['t2i_ovr']:7.4f} / {w['t2i_head']:7.4f} / {w['t2i_rare']:7.4f} | {edge_flag}"
+			f"{disp_name:<15} | {w['lr_str']:>9} | {w['score']:7.4f} | "
+			f"{i2t_str} | {t2i_str} | {edge_flag}"
 		)
+
+		hw = harmonic_winners.get(strat)
+		if (not is_closed_set) and hw is not None and hw["lr_str"] != w["lr_str"]:
+			harmonic_diffs.append(
+				f"{strat}: arith={w['lr_str']} ({w['score']:.4f}) vs harm={hw['lr_str']} (H={hw['harmonic_score']:.4f})"
+			)
+
 		optimal_payload["optimal_lrs"][strat] = w["lr_str"]
 		optimal_payload["details"][strat] = {
 			"best_lr": w["lr_str"],
-			"composite_score": w["score"],
-			"i2t_mAP_overall": w["i2t_ovr"],
-			"i2t_mAP_head": w["i2t_head"],
-			"i2t_mAP_rare": w["i2t_rare"],
-			"t2i_mAP_overall": w["t2i_ovr"],
-			"t2i_mAP_head": w["t2i_head"],
-			"t2i_mAP_rare": w["t2i_rare"],
+			"selection_metric": f"I2T_mAP@{args.k}_overall" if is_closed_set else f"0.5*(I2T+T2I)_mAP@{args.k}_overall",
+			"selection_score": _json_num(w["score"]),
+			"harmonic_best_lr": hw["lr_str"] if hw is not None else None,
+			"harmonic_score": _json_num(w["harmonic_score"]),
+			"i2t_mAP_overall": _json_num(w["i2t_ovr"]),
+			"i2t_mAP_head": _json_num(w["i2t_head"]),
+			"i2t_mAP_rare": _json_num(w["i2t_rare"]),
+			"t2i_mAP_overall": _json_num(w["t2i_ovr"]),
+			"t2i_mAP_head": _json_num(w["t2i_head"]),
+			"t2i_mAP_rare": _json_num(w["t2i_rare"]),
 			"boundary": edge_flag,
 		}
+
+	if harmonic_diffs:
+		print("\n[Harmonic Mean Cross-Check — differences vs Arithmetic Mean]:")
+		for diff in harmonic_diffs:
+			print(f"  - {diff}")
+	else:
+		print("\n[Harmonic Mean Cross-Check]: 100% agreement with Arithmetic Mean across all open-vocabulary strategies.")
 
 	# 4. Print copy-pasteable Bash map for roihu_finetuner.sh / lumi_finetuner.sh
 	print("\n# Ready-to-paste Bash LR mapping for finetuner scripts:")
@@ -303,7 +368,7 @@ def main():
 
 	csv_path = os.path.join(args.sweep_dir, "lr_grid_summary.csv")
 	fieldnames = [
-		"strategy", "lr_str", "lr", "status", "score",
+		"strategy", "lr_str", "lr", "status", "score", "harmonic_score",
 		"i2t_ovr", "i2t_head", "i2t_rare",
 		"t2i_ovr", "t2i_head", "t2i_rare",
 		"i2t_rec", "t2i_rec", "elapsed_sec", "error",
@@ -312,7 +377,7 @@ def main():
 		writer = csv.DictWriter(f, fieldnames=fieldnames)
 		writer.writeheader()
 		for r in rows:
-			writer.writerow({k: r[k] for k in fieldnames})
+			writer.writerow({k: _csv_val(r[k]) for k in fieldnames})
 
 	plot_path = os.path.join(args.sweep_dir, "lr_sensitivity_curve.png")
 	plotted = plot_lr_sensitivity(matrix, args.strategies, args.lrs, plot_path, args.protocol, args.k)

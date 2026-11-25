@@ -69,9 +69,7 @@ echo "SLURM_ARRAY_TASK_ID : $SLURM_ARRAY_TASK_ID | JOB: $SLURM_JOB_NAME ($SLURM_
 echo "NODE: $SLURM_JOB_NODELIST | CPUS: $SLURM_CPUS_PER_TASK | MEM: $SLURM_MEM_PER_NODE"
 echo "${stars// /*}"
 
-##############################################################################
 # FIXED CALIBRATION CONFIGURATION (overridable via environment variables)
-##############################################################################
 DATASET_DIR="${DATASET_DIR:-/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4}"
 METADATA_CSV="${DATASET_DIR}/metadata_multi_label_multimodal.csv"
 ARCHITECTURE="${ARCHITECTURE:-ViT-L/14@336px}"
@@ -103,9 +101,8 @@ TIP_INITIAL_BETA="5.5"
 TIP_INITIAL_ALPHA="1.0"
 TIP_SUPPORT_SHOTS=16
 
-##############################################################################
-# 2D SEARCH GRID: 10 TRAINABLE STRATEGIES × 9 LOG-SPACED LEARNING RATES
-##############################################################################
+# 2D SEARCH GRID
+# 10 TRAINABLE STRATEGIES × 9 LOG-SPACED LEARNING RATES
 TRAINABLE_STRATEGIES=(
 	"probe"          # 0  : tasks  0– 8
 	"full"           # 1  : tasks  9–17
