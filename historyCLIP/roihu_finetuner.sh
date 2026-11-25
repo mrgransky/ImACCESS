@@ -12,7 +12,7 @@
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
 #SBATCH --time=0-06:35:00
-##SBATCH --begin=03:30:00
+#SBATCH --begin=07:59:00
 
 ##############################################################################
 # ARRAY INDEXING SCHEME
