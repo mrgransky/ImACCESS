@@ -7,12 +7,13 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=204G
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
-#SBATCH --time=0-08:00:00
-#SBATCH --array=0-59
+#SBATCH --time=1-12:00:00
+##SBATCH --array=0-59
+#SBATCH --array=34
 
 ##############################################################################
 # EQUAL-BUDGET LEARNING RATE GRID SEARCH (PILOT CALIBRATION)
