@@ -7,12 +7,12 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=40
 #SBATCH --mem=204G
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
-#SBATCH --time=0-07:35:00
-#SBATCH --begin=07:59:00
+#SBATCH --time=0-12:00:00
+##SBATCH --begin=07:59:00
 
 ##############################################################################
 # ARRAY INDEXING SCHEME
@@ -70,11 +70,11 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-#SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
+##SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
 ##SBATCH --array=0-5 # only zero_shot and probe for debugging label similarity
-##SBATCH --array=12-14 # only LoRA+
-##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
-##SBATCH --array=18-20 # only dora
+##SBATCH --array=12-14 # LoRA+
+##SBATCH --array=27-29 # tip_adapter_f requires mem > 256G
+#SBATCH --array=18-20 # dora
 ##SBATCH --array=9-23 # low-rank adaptation
 ##SBATCH --array=3-5 # probe
 ##SBATCH --array=9-11 # lora
